@@ -57,7 +57,7 @@ python3 -m http.server
 You will need to copy the js and wasm files over to the server dev container. The easiest way to do this is to set `$SECUREDROP_SERVER` to the root of the git tree containing your SecureDrop checkout. Then:
 
 ```
-cp pkg/securedrop_source $SECUREDROP_SERVER/securedrop/static/js/
+cp pkg/securedrop_source.js $SECUREDROP_SERVER/securedrop/static/js/
 cp pkg/securedrop_source_bg.wasm $SECUREDROP_SERVER/securedrop/static/js/
 ```
 

@@ -1,66 +1,56 @@
 use wasm_bindgen::prelude::*;
+extern crate console_error_panic_hook;
+use std::panic;
 
-use rand::Rng;
+use hex::{decode, encode};
 use rand::rngs::OsRng;
-use uuid::Uuid;
+use rand::Rng;
+use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use libsignal_protocol_rust::{ProtocolAddress, IdentityKeyPair, InMemSignalProtocolStore, KeyPair};
 use libsignal_protocol_rust::IdentityKeyStore;
+use libsignal_protocol_rust::{
+    IdentityKeyPair, InMemSignalProtocolStore, KeyPair, ProtocolAddress,
+};
 
 const DEVICE_ID: u32 = 1;
 
-/// Calling external functions in Javascript from Rust
-#[wasm_bindgen]
-extern {
-    pub fn alert(s: &str);
+#[derive(Serialize, Deserialize)]
+pub struct RegistrationBundle {
+    pub signed_prekey_id: u32,
+    pub signed_prekey: String,
+    pub signed_prekey_timestamp: u64,
+    pub identity_key: String,
+    pub prekey_signature: String,
+    pub registration_id: u32,
 }
 
-/// Producing Rust functions that Javascript can call
-#[wasm_bindgen]
-pub fn greet(name: &str) {
-    alert(&format!("Hello, {}!", name));
-}
-
-// Called when the wasm module is instantiated
+// For putting logic when the wasm module is first loaded
 #[wasm_bindgen(start)]
 pub fn main() -> Result<(), JsValue> {
-    // Use `web_sys`'s global `window` function to get a handle on the global
-    // window object.
-    let window = web_sys::window().expect("no global `window` exists");
-    let document = window.document().expect("should have a document on window");
-    let body = document.body().expect("document should have a body");
-
-    // Manufacture the element we're gonna append
-    let val = document.create_element("p")?;
-    val.set_inner_html("Hello from Rust!");
-
-    body.append_child(&val)?;
-
     Ok(())
 }
 
 #[wasm_bindgen]
-pub fn generate(source_uuid: String) -> Result<bool, JsValue> {
+pub fn generate(source_uuid: String) -> Result<JsValue, JsValue> {
+    // Let panic messages pass through to the JavaScript console for debugging
+    panic::set_hook(Box::new(console_error_panic_hook::hook));
+
     let mut csprng = OsRng;
 
-    // Generating required key material for source Signal registration
     let source_address = ProtocolAddress::new(source_uuid, DEVICE_ID);
-    //let source_registration_id = Uuid::new_v4();
-    let source_registration_id = csprng.gen();
+    let registration_id: u32 = csprng.gen();
 
-    // Long-term signal identity key
     let identity_key = IdentityKeyPair::generate(&mut csprng);
 
     // This struct will hold our session, identity, prekey and sender key stores.
     // TODO: We'll be saving this (encrypted) on the server as we communicate.
-    let mut store = match InMemSignalProtocolStore::new(identity_key, source_registration_id) {
+    let mut store = match InMemSignalProtocolStore::new(identity_key, registration_id) {
         Ok(data) => data,
         Err(err) => return Err(err.to_string().into()),
     };
-    //TODO: make a SecureDropSourceSession struct in securedrop-source that can be serialized?
+    // TODO: make a SecureDropSourceSession struct in securedrop-source that can be serialized?
 
-    // Signed prekey
     let signed_pre_key_pair = KeyPair::generate(&mut csprng);
 
     // Not using ? here since the trait
@@ -71,27 +61,37 @@ pub fn generate(source_uuid: String) -> Result<bool, JsValue> {
         Ok(data) => data,
         Err(err) => return Err(err.to_string().into()),
     };
-    let signed_pre_key_signature = match keypair.private_key().calculate_signature(&signed_pre_key_public, &mut csprng) {
+    let prekey_signature = match keypair
+        .private_key()
+        .calculate_signature(&signed_pre_key_public, &mut csprng)
+    {
         Ok(data) => data,
         Err(err) => return Err(err.to_string().into()),
     };
+    // TODO: Add one-time prekeys later
 
-    // TODO: one-time prekey
-
-    let start = SystemTime::now();
-    let signed_prekey_timestamp = start
-        .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards");
+    // The below does not work on Wasm, workaround TODO (compiles but produces runtime panic):
+    // https://github.com/rust-lang/rust/issues/48564#issuecomment-505114709
+    // let start = SystemTime::now();
+    // let signed_prekey_timestamp = start
+    //    .duration_since(UNIX_EPOCH)
+    //    .expect("Time went backwards");
+    let signed_prekey_timestamp = 1234123;
     // TODO: Ensure server side rejects duplicated signed_pre_key_ids
-    let signed_pre_key_id: u32 = csprng.gen();
+    let signed_prekey_id: u32 = csprng.gen();
 
-    // TODO: POST to server here
-    // signed_pre_key_id
-    // signed_prekey
-    // signed_prekey_timestamp
-    // identity_key
-    // signed_pre_key_signature
-    // registration_id
+    let registration_data = RegistrationBundle {
+        signed_prekey_id,
+        signed_prekey: hex::encode(signed_pre_key_public),
+        //signed_prekey_timestamp: signed_prekey_timestamp.as_secs(),
+        signed_prekey_timestamp,
+        identity_key: hex::encode(identity_key.public_key().serialize()),
+        prekey_signature: hex::encode(prekey_signature),
+        registration_id,
+    };
 
-    Ok(true)
+    match JsValue::from_serde(&registration_data) {
+        Ok(data) => Ok(data),
+        Err(err) => Err(err.to_string().into()),
+    }
 }
