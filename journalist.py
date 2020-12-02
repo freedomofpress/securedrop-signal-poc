@@ -86,6 +86,7 @@ while True:
     print(resp, resp.text)
 
     message = resp.json().get("message", None)
+    message_uuid = resp.json().get("message_uuid", None)
     source_uuid = resp.json().get("source_uuid", None)
 
     if not message:
@@ -102,4 +103,21 @@ while True:
 
     print(plaintext.decode('utf8'))
 
-    # SECOND ROUNDTRIP, DELETE
+    print("confirming receipt and successful decryption of message")
+    resp = requests.post(f'http://127.0.0.1:8081/api/v2/messages/confirmation/{message_uuid}',
+                          headers=auth_headers)
+    print(resp, resp.text)
+
+    journo_response = "wellllll howdy doody! please tell me more"
+    print(f'now responding to source... sending {journo_response}')
+
+    outgoing_message = session_cipher.message_encrypt(
+        store, source_address, journo_response
+    )
+    print("sending message!!!!..")
+    resp = requests.post(f'http://127.0.0.1:8081/api/v2/sources/{source_uuid}/messages',
+                        data=json.dumps(
+                            {"message": outgoing_message.serialize().hex()}),
+                        headers=auth_headers)
+    print(resp, resp.text)
+    time.sleep(PAUSE)

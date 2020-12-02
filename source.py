@@ -4,10 +4,10 @@ import time
 
 PAUSE = 2
 
-from signal_protocol import address, curve, identity_key, state, storage, session, session_cipher
+from signal_protocol import address, curve, identity_key, state, storage, session, protocol, session_cipher
 
 # Copy a source codename from the dev console
-passphrase = "strum snowcap monotype unstirred setback hardened unless font"
+passphrase = "graceless limes fidgeting disjoin payee savanna uneasily wish"
 
 # Root endpoint
 resp = requests.get('http://127.0.0.1:8080/api/v2/')
@@ -51,6 +51,15 @@ signed_pre_key_signature = (
 signed_prekey_timestamp = int(time.time())
 
 signed_pre_key_id = 2125
+
+signed_prekey = state.SignedPreKeyRecord(
+signed_pre_key_id,
+signed_prekey_timestamp,
+signed_pre_key_pair,
+signed_pre_key_signature,
+)
+store.save_signed_pre_key(signed_pre_key_id, signed_prekey)
+
 print("done! now attempting registration with the server...")
 resp = requests.post('http://127.0.0.1:8080/api/v2/register',
                      data=json.dumps(
@@ -116,3 +125,36 @@ resp = requests.post(f'http://127.0.0.1:8080/api/v2/journalists/{journalist_uuid
                      headers=auth_headers)
 print(resp, resp.text)
 time.sleep(PAUSE)
+
+print("waiting for messages from journalists")
+while True:
+    time.sleep(PAUSE)
+
+    print("lets see if I have any messages...")
+    resp = requests.get(f'http://127.0.0.1:8080/api/v2/messages',
+                        headers=auth_headers)
+    print(resp, resp.text)
+
+    message = resp.json().get("message", None)
+    message_uuid = resp.json().get("message_uuid", None)
+    journalist_uuid = resp.json().get("journalist_uuid", None)
+
+    if not message:
+        continue
+
+    # Else, we have a message. We likely have a session already for this journalist.
+    journalist_address = address.ProtocolAddress(journalist_uuid, DEVICE_ID)
+    # TODO: Clients need to try_from using the appropriate message type. If this fails
+    # we would need to try from PreKeySignalMessage in case this is a new session.
+    incoming_message = protocol.SignalMessage.try_from(bytes.fromhex(message))
+
+    plaintext = session_cipher.message_decrypt(
+        store, journalist_address, incoming_message
+    )
+
+    print(plaintext.decode('utf8'))
+
+    print("confirming receipt and successful decryption of message")
+    resp = requests.post(f'http://127.0.0.1:8080/api/v2/messages/confirmation/{message_uuid}',
+                          headers=auth_headers)
+    print(resp, resp.text)
