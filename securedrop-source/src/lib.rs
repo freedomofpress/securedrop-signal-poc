@@ -175,17 +175,12 @@ impl SecureDropSourceSession {
 
     pub fn encrypt(&mut self,
         address: String,
-        message: String) -> Result<String, JsValue> {
+        ptext: String) -> Result<String, JsValue> {
         panic::set_hook(Box::new(console_error_panic_hook::hook));
 
         let recipient = ProtocolAddress::new(address, DEVICE_ID);
-        let ptext = match hex::decode(message) {
-            Ok(data) => data,
-            Err(err) => return Err(err.to_string().into()),
-        };
-
         match message_encrypt(
-            &ptext,
+            &ptext.into_bytes(),
             &recipient,
             &mut self.store.session_store,
             &mut self.store.identity_store,
