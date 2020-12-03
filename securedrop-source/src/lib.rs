@@ -25,73 +25,88 @@ pub struct RegistrationBundle {
     pub registration_id: u32,
 }
 
+#[wasm_bindgen]
+pub struct SecureDropSourceSession {
+    store: InMemSignalProtocolStore,
+    pub registration_id: u32,
+}
+
+#[wasm_bindgen]
+impl SecureDropSourceSession {
+    pub fn new(source_uuid: String) -> Result<SecureDropSourceSession, JsValue> {
+        panic::set_hook(Box::new(console_error_panic_hook::hook));
+
+        let mut csprng = OsRng;
+
+        let source_address = ProtocolAddress::new(source_uuid, DEVICE_ID);
+        let registration_id: u32 = csprng.gen();
+
+        let identity_key = IdentityKeyPair::generate(&mut csprng);
+
+        // This struct will hold our session, identity, prekey and sender key stores.
+        // TODO: We'll be saving this (encrypted) on the server as we communicate.
+        match InMemSignalProtocolStore::new(identity_key, registration_id) {
+            Ok(store) => Ok(SecureDropSourceSession{ store, registration_id }),
+            Err(err) => Err(err.to_string().into()),
+        }
+    }
+
+    pub fn generate(&self) -> Result<JsValue, JsValue> {
+        // Lets panic messages pass through to the JavaScript console for debugging
+        panic::set_hook(Box::new(console_error_panic_hook::hook));
+
+        let mut csprng = OsRng;
+
+        let signed_pre_key_pair = KeyPair::generate(&mut csprng);
+
+        // Not using ? here since the trait
+        // `std::convert::From<libsignal_protocol_rust::error::SignalProtocolError>`
+        // is not implemented for `wasm_bindgen::JsValue`.
+        let signed_pre_key_public = signed_pre_key_pair.public_key.serialize();
+        let keypair = match self.store.get_identity_key_pair(None) {
+            Ok(data) => data,
+            Err(err) => return Err(err.to_string().into()),
+        };
+        let prekey_signature = match keypair
+            .private_key()
+            .calculate_signature(&signed_pre_key_public, &mut csprng)
+        {
+            Ok(data) => data,
+            Err(err) => return Err(err.to_string().into()),
+        };
+        // TODO: Add one-time prekeys later
+
+        // The below does not work on Wasm, workaround TODO (compiles but produces runtime panic):
+        // https://github.com/rust-lang/rust/issues/48564#issuecomment-505114709
+        // let start = SystemTime::now();
+        // let signed_prekey_timestamp = start
+        //    .duration_since(UNIX_EPOCH)
+        //    .expect("Time went backwards");
+        let signed_prekey_timestamp = 1234123;
+        // TODO: Ensure server side rejects duplicated signed_pre_key_ids
+        let signed_prekey_id: u32 = csprng.gen();
+
+        let registration_data = RegistrationBundle {
+            signed_prekey_id,
+            signed_prekey: hex::encode(signed_pre_key_public),
+            //signed_prekey_timestamp: signed_prekey_timestamp.as_secs(),
+            signed_prekey_timestamp,
+            identity_key: hex::encode(keypair.public_key().serialize()),
+            prekey_signature: hex::encode(prekey_signature),
+            registration_id: self.registration_id,
+        };
+
+        match JsValue::from_serde(&registration_data) {
+            Ok(data) => Ok(data),
+            Err(err) => Err(err.to_string().into()),
+        }
+    }
+}
+
 // For putting logic when the wasm module is first loaded
 #[wasm_bindgen(start)]
 pub fn main() -> Result<(), JsValue> {
     Ok(())
 }
 
-#[wasm_bindgen]
-pub fn generate(source_uuid: String) -> Result<JsValue, JsValue> {
-    // Let panic messages pass through to the JavaScript console for debugging
-    panic::set_hook(Box::new(console_error_panic_hook::hook));
 
-    let mut csprng = OsRng;
-
-    let source_address = ProtocolAddress::new(source_uuid, DEVICE_ID);
-    let registration_id: u32 = csprng.gen();
-
-    let identity_key = IdentityKeyPair::generate(&mut csprng);
-
-    // This struct will hold our session, identity, prekey and sender key stores.
-    // TODO: We'll be saving this (encrypted) on the server as we communicate.
-    let mut store = match InMemSignalProtocolStore::new(identity_key, registration_id) {
-        Ok(data) => data,
-        Err(err) => return Err(err.to_string().into()),
-    };
-    // TODO: make a SecureDropSourceSession struct in securedrop-source that can be serialized?
-
-    let signed_pre_key_pair = KeyPair::generate(&mut csprng);
-
-    // Not using ? here since the trait
-    // `std::convert::From<libsignal_protocol_rust::error::SignalProtocolError>`
-    // is not implemented for `wasm_bindgen::JsValue`.
-    let signed_pre_key_public = signed_pre_key_pair.public_key.serialize();
-    let keypair = match store.get_identity_key_pair(None) {
-        Ok(data) => data,
-        Err(err) => return Err(err.to_string().into()),
-    };
-    let prekey_signature = match keypair
-        .private_key()
-        .calculate_signature(&signed_pre_key_public, &mut csprng)
-    {
-        Ok(data) => data,
-        Err(err) => return Err(err.to_string().into()),
-    };
-    // TODO: Add one-time prekeys later
-
-    // The below does not work on Wasm, workaround TODO (compiles but produces runtime panic):
-    // https://github.com/rust-lang/rust/issues/48564#issuecomment-505114709
-    // let start = SystemTime::now();
-    // let signed_prekey_timestamp = start
-    //    .duration_since(UNIX_EPOCH)
-    //    .expect("Time went backwards");
-    let signed_prekey_timestamp = 1234123;
-    // TODO: Ensure server side rejects duplicated signed_pre_key_ids
-    let signed_prekey_id: u32 = csprng.gen();
-
-    let registration_data = RegistrationBundle {
-        signed_prekey_id,
-        signed_prekey: hex::encode(signed_pre_key_public),
-        //signed_prekey_timestamp: signed_prekey_timestamp.as_secs(),
-        signed_prekey_timestamp,
-        identity_key: hex::encode(identity_key.public_key().serialize()),
-        prekey_signature: hex::encode(prekey_signature),
-        registration_id,
-    };
-
-    match JsValue::from_serde(&registration_data) {
-        Ok(data) => Ok(data),
-        Err(err) => Err(err.to_string().into()),
-    }
-}
