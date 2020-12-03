@@ -8,9 +8,10 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use libsignal_protocol_rust::IdentityKeyStore;
+use libsignal_protocol_rust::{IdentityKeyStore, SignedPreKeyStore};
 use libsignal_protocol_rust::{
     IdentityKeyPair, InMemSignalProtocolStore, KeyPair, ProtocolAddress,
+    SignedPreKeyRecord, PreKeyBundle, PublicKey, IdentityKey, process_prekey_bundle
 };
 
 const DEVICE_ID: u32 = 1;
@@ -51,7 +52,8 @@ impl SecureDropSourceSession {
         }
     }
 
-    pub fn generate(&self) -> Result<JsValue, JsValue> {
+    /// Called when we first generate keys prior to initial registration.
+    pub fn generate(&mut self) -> Result<JsValue, JsValue> {
         // Lets panic messages pass through to the JavaScript console for debugging
         panic::set_hook(Box::new(console_error_panic_hook::hook));
 
@@ -86,6 +88,14 @@ impl SecureDropSourceSession {
         // TODO: Ensure server side rejects duplicated signed_pre_key_ids
         let signed_prekey_id: u32 = csprng.gen();
 
+        let signed_prekey_record = SignedPreKeyRecord::new(
+            signed_prekey_id,
+            signed_prekey_timestamp,
+            &signed_pre_key_pair,
+            &prekey_signature
+        );
+        self.store.save_signed_pre_key(signed_prekey_id, &signed_prekey_record, None);
+
         let registration_data = RegistrationBundle {
             signed_prekey_id,
             signed_prekey: hex::encode(signed_pre_key_public),
@@ -98,6 +108,65 @@ impl SecureDropSourceSession {
 
         match JsValue::from_serde(&registration_data) {
             Ok(data) => Ok(data),
+            Err(err) => Err(err.to_string().into()),
+        }
+    }
+
+    /// TODO: Prevent duplicate registration IDs from source and journalist
+    /// (matters on journalist side)
+    pub fn process_prekey_bundle(&mut self,
+        registration_id: u32,
+        identity_key: String,
+        address: String,
+        signed_prekey_id: u32,
+        signed_prekey: String,
+        signed_prekey_sig: String,
+    ) -> Result<bool, JsValue> {
+
+        let mut csprng = OsRng;
+        let journo_address = ProtocolAddress::new(address, DEVICE_ID);
+        let signed_prekey_bytes = match hex::decode(signed_prekey) {
+            Ok(data) => data,
+            Err(err) => return Err(err.to_string().into()),
+        };
+        let signed_prekey_sig = match hex::decode(signed_prekey_sig) {
+            Ok(data) => data,
+            Err(err) => return Err(err.to_string().into()),
+        };
+        let identity_key_bytes = match hex::decode(identity_key) {
+            Ok(data) => data,
+            Err(err) => return Err(err.to_string().into()),
+        };
+        let identity_key = match IdentityKey::decode(&identity_key_bytes) {
+            Ok(data) => data,
+            Err(err) => return Err(err.to_string().into()),
+        };
+        let signed_prekey = match PublicKey::deserialize(&signed_prekey_bytes) {
+            Ok(data) => data,
+            Err(err) => return Err(err.to_string().into()),
+        };
+        let pre_key_bundle = match PreKeyBundle::new(
+            registration_id,
+            DEVICE_ID,
+            None, // pre key id TK
+            None, // pre key TK
+            signed_prekey_id,
+            signed_prekey,
+            signed_prekey_sig,
+            identity_key,
+        ) {
+            Ok(data) => data,
+            Err(err) => return Err(err.to_string().into()),
+        };
+        match process_prekey_bundle(
+            &journo_address,
+            &mut self.store.session_store,
+            &mut self.store.identity_store,
+            &pre_key_bundle,
+            &mut csprng,
+            None,
+        ) {
+            Ok(data) => Ok(true),
             Err(err) => Err(err.to_string().into()),
         }
     }
