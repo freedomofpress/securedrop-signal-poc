@@ -11,7 +11,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use libsignal_protocol_rust::{IdentityKeyStore, SignedPreKeyStore};
 use libsignal_protocol_rust::{
     IdentityKeyPair, InMemSignalProtocolStore, KeyPair, ProtocolAddress,
-    SignedPreKeyRecord, PreKeyBundle, PublicKey, IdentityKey, process_prekey_bundle
+    SignedPreKeyRecord, PreKeyBundle, PublicKey, IdentityKey, process_prekey_bundle,
+    message_encrypt, message_decrypt
 };
 
 const DEVICE_ID: u32 = 1;
@@ -122,6 +123,7 @@ impl SecureDropSourceSession {
         signed_prekey: String,
         signed_prekey_sig: String,
     ) -> Result<bool, JsValue> {
+        panic::set_hook(Box::new(console_error_panic_hook::hook));
 
         let mut csprng = OsRng;
         let journo_address = ProtocolAddress::new(address, DEVICE_ID);
@@ -167,6 +169,29 @@ impl SecureDropSourceSession {
             None,
         ) {
             Ok(data) => Ok(true),
+            Err(err) => Err(err.to_string().into()),
+        }
+    }
+
+    pub fn encrypt(&mut self,
+        address: String,
+        message: String) -> Result<String, JsValue> {
+        panic::set_hook(Box::new(console_error_panic_hook::hook));
+
+        let recipient = ProtocolAddress::new(address, DEVICE_ID);
+        let ptext = match hex::decode(message) {
+            Ok(data) => data,
+            Err(err) => return Err(err.to_string().into()),
+        };
+
+        match message_encrypt(
+            &ptext,
+            &recipient,
+            &mut self.store.session_store,
+            &mut self.store.identity_store,
+            None
+        ) {
+            Ok(data) => Ok(hex::encode(data.serialize())),
             Err(err) => Err(err.to_string().into()),
         }
     }
