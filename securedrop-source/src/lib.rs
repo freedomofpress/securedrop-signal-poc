@@ -7,12 +7,13 @@ use rand::rngs::OsRng;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::convert::TryFrom;
 
 use libsignal_protocol_rust::{IdentityKeyStore, SignedPreKeyStore};
 use libsignal_protocol_rust::{
     IdentityKeyPair, InMemSignalProtocolStore, KeyPair, ProtocolAddress,
     SignedPreKeyRecord, PreKeyBundle, PublicKey, IdentityKey, process_prekey_bundle,
-    message_encrypt, message_decrypt
+    message_encrypt, message_decrypt, SignalMessage, CiphertextMessage
 };
 
 const DEVICE_ID: u32 = 1;
@@ -187,6 +188,42 @@ impl SecureDropSourceSession {
             None
         ) {
             Ok(data) => Ok(hex::encode(data.serialize())),
+            Err(err) => Err(err.to_string().into()),
+        }
+    }
+
+    pub fn decrypt(&mut self,
+        address: String,
+        ciphertext: String) -> Result<String, JsValue> {
+        panic::set_hook(Box::new(console_error_panic_hook::hook));
+
+        let sender = ProtocolAddress::new(address, DEVICE_ID);
+        let mut csprng = OsRng;
+
+        let raw_ciphertext = match hex::decode(ciphertext) {
+            Ok(data) => data,
+            Err(err) => return Err(err.to_string().into()),
+        };
+        // TODO: Allow other message types here
+        // &raw_ciphertext[..] because try_from requires &[u8], raw_ciphertext is Vec<u8>
+        let message = match SignalMessage::try_from(&raw_ciphertext[..]) {
+            Ok(data) => data,
+            Err(err) => return Err(err.to_string().into()),
+        };
+        let plaintext = match message_decrypt(
+            &CiphertextMessage::SignalMessage(message),
+            &sender,
+            &mut self.store.session_store,
+            &mut self.store.identity_store,
+            &mut self.store.pre_key_store,
+            &mut self.store.signed_pre_key_store,
+            &mut csprng,
+            None) {
+            Ok(data) => data,
+            Err(err) => return Err(err.to_string().into()),
+        };
+        match String::from_utf8(plaintext) {
+            Ok(data) => Ok(data),
             Err(err) => Err(err.to_string().into()),
         }
     }
