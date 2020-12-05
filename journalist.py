@@ -94,8 +94,14 @@ while True:
 
     # Else, we have a message.
     source_address = address.ProtocolAddress(source_uuid, DEVICE_ID)
-    # TODO: Clients need to try_from using the appropriate message type
-    incoming_message = protocol.PreKeySignalMessage.try_from(bytes.fromhex(message))
+
+    try:
+        incoming_message = protocol.PreKeySignalMessage.try_from(bytes.fromhex(message))
+    except Exception as e:  # Generic exception due to https://github.com/freedomofpress/signal-protocol/issues/10
+        if "invalid wire type" in str(e):
+            incoming_message = protocol.SignalMessage.try_from(bytes.fromhex(message))
+        else:
+            raise e
 
     plaintext = session_cipher.message_decrypt(
         store, source_address, incoming_message
