@@ -1,7 +1,7 @@
 # securedrop-e2e
 prototype source + journalist clients for securedrop
 
-Note: these are prototypes for discussion only and are NOT for production use
+⚠️ **these are prototypes for discussion only and are NOT for production use** ⚠️
 
 ## Python clients
 
