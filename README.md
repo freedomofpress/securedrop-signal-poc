@@ -1,6 +1,8 @@
 # securedrop-e2e
 prototype source + journalist clients for securedrop
 
+Note: these are prototypes for discussion only and are NOT for production use
+
 ## Python clients
 
 Python clients in `journalist.py` and `source.py` demo e2e comms through the server. Clients test source-initiated communication (i.e. journalist GET prekey bundle endpoint is not used).
@@ -35,7 +37,7 @@ In a "real" deployment, we'd integrate the logic in `journalist.py` into `secure
 
 You will need a rust toolchain installed on your system to modify the securedrop-source crate.
 
-To compile to wasm and generate glue js for the source interface, one should:
+To compile to wasm and generate glue js for the source interface, one should in the `securedrop-source` directory build with [`wasm-pack`](https://github.com/rustwasm/wasm-pack):
 
 ```
 wasm-pack build --target web
@@ -46,12 +48,6 @@ This produces a `pkg` directory with the compiled wasm and js (along with other 
 ```
 ./pkg/securedrop_source.js
 ./pkg/securedrop_source_bg.wasm
-```
-
-You can serve immediately to test using `index.html`:
-
-```
-python3 -m http.server
 ```
 
 You will need to copy the js and wasm files over to the server dev container. The easiest way to do this is to set `$SECUREDROP_SERVER` to the root of the git tree containing your SecureDrop checkout. Then:
