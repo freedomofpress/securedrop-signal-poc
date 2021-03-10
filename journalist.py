@@ -108,18 +108,22 @@ while True:
     )
 
     print(plaintext.decode('utf8'))
+    time.sleep(PAUSE)
 
     print("confirming receipt and successful decryption of message")
     resp = requests.post(f'http://127.0.0.1:8081/api/v2/messages/confirmation/{message_uuid}',
                           headers=auth_headers)
     print(resp, resp.text)
+    time.sleep(PAUSE)
 
-    journo_response = "wellllll howdy doody! please tell me more"
+    journo_response = b"wellllll howdy doody! please tell me more"
     print(f'now responding to source... sending {journo_response}')
 
     outgoing_message = session_cipher.message_encrypt(
         store, source_address, journo_response
     )
+    time.sleep(PAUSE)
+
     print("sending message!!!!..")
     resp = requests.post(f'http://127.0.0.1:8081/api/v2/sources/{source_uuid}/messages',
                         data=json.dumps(
