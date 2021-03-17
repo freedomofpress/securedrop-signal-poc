@@ -4,7 +4,7 @@ import time
 
 PAUSE = 2
 
-from signal_protocol import address, curve, identity_key, storage, session, session_cipher, state, protocol
+from signal_protocol import address, curve, identity_key, storage, sealed_sender, session, session_cipher, state, protocol
 
 username = "journalist"
 passphrase = "this dont matter"
@@ -75,6 +75,21 @@ resp = requests.post('http://127.0.0.1:8081/api/v2/register',
 print(resp, resp.text)
 time.sleep(PAUSE)
 
+print("getting sender certificate...")
+resp = requests.get('http://127.0.0.1:8081/api/v2/sender_cert',
+                     headers=auth_headers)
+print(resp, resp.text)
+raw_sender_cert = resp.json().get("sender_cert")
+sender_cert = sealed_sender.SenderCertificate.deserialize(bytes.fromhex(raw_sender_cert))
+trust_root = resp.json().get("trust_root")
+trust_root_pubkey = curve.PublicKey.deserialize(bytes.fromhex(trust_root))
+current_timestamp = 100
+
+# Ensure certificate is still valid
+sender_cert.validate(trust_root_pubkey, current_timestamp)
+print("sender cert is valid!")
+
+time.sleep(PAUSE)
 
 print("waiting for messages from sources")
 while True:
@@ -85,29 +100,27 @@ while True:
                         headers=auth_headers)
     print(resp, resp.text)
 
-    message = resp.json().get("message", None)
+    raw_message = resp.json().get("message", None)
     message_uuid = resp.json().get("message_uuid", None)
-    source_uuid = resp.json().get("source_uuid", None)
 
-    if not message:
+    if not raw_message:
         continue
 
-    # Else, we have a message.
+    current_timestamp = 100
+    message = sealed_sender.sealed_sender_decrypt(
+        bytes.fromhex(raw_message),
+        trust_root_pubkey,
+        current_timestamp,
+        journalist_uuid,
+        journalist_uuid,
+        DEVICE_ID,
+        store,
+    )
+    # We get sender from within the envelope instead of from what is stored on the server
+    source_uuid = message.sender_uuid()
     source_address = address.ProtocolAddress(source_uuid, DEVICE_ID)
 
-    try:
-        incoming_message = protocol.PreKeySignalMessage.try_from(bytes.fromhex(message))
-    except Exception as e:  # Generic exception due to https://github.com/freedomofpress/signal-protocol/issues/10
-        if "invalid wire type" in str(e):
-            incoming_message = protocol.SignalMessage.try_from(bytes.fromhex(message))
-        else:
-            raise e
-
-    plaintext = session_cipher.message_decrypt(
-        store, source_address, incoming_message
-    )
-
-    print(plaintext.decode('utf8'))
+    print(message.message().decode('utf8'))
     time.sleep(PAUSE)
 
     print("confirming receipt and successful decryption of message")
@@ -119,15 +132,15 @@ while True:
     journo_response = b"wellllll howdy doody! please tell me more"
     print(f'now responding to source... sending {journo_response}')
 
-    outgoing_message = session_cipher.message_encrypt(
-        store, source_address, journo_response
+    sealed_sender_message = sealed_sender.sealed_sender_encrypt(
+        source_address, sender_cert, journo_response, store
     )
     time.sleep(PAUSE)
 
     print("sending message!!!!..")
     resp = requests.post(f'http://127.0.0.1:8081/api/v2/sources/{source_uuid}/messages',
                         data=json.dumps(
-                            {"message": outgoing_message.serialize().hex()}),
+                            {"message": sealed_sender_message.hex()}),
                         headers=auth_headers)
     print(resp, resp.text)
     time.sleep(PAUSE)

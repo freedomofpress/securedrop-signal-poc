@@ -7,13 +7,13 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 // use std::time::{SystemTime, UNIX_EPOCH};
+use futures::executor::block_on;
 
 use libsignal_protocol_rust::{
     message_decrypt, message_encrypt, process_prekey_bundle, CiphertextMessage, IdentityKey,
     IdentityKeyPair, InMemSignalProtocolStore, KeyPair, PreKeyBundle, ProtocolAddress, PublicKey,
-    SignalMessage, SignedPreKeyRecord,
+    SenderCertificate, SignalMessage, SignedPreKeyRecord, IdentityKeyStore, SignedPreKeyStore, sealed_sender_encrypt, sealed_sender_decrypt,
 };
-use libsignal_protocol_rust::{IdentityKeyStore, SignedPreKeyStore};
 
 const DEVICE_ID: u32 = 1;
 
@@ -29,8 +29,11 @@ pub struct RegistrationBundle {
 
 #[wasm_bindgen]
 pub struct SecureDropSourceSession {
+    source_uuid: String,
     store: InMemSignalProtocolStore,
     pub registration_id: u32,
+    sender_cert: Option<SenderCertificate>,
+    server_trust_root: Option<PublicKey>,
 }
 
 #[wasm_bindgen]
@@ -41,7 +44,7 @@ impl SecureDropSourceSession {
 
         let mut csprng = OsRng;
 
-        let _source_address = ProtocolAddress::new(source_uuid, DEVICE_ID);
+        let _source_address = ProtocolAddress::new(source_uuid.clone(), DEVICE_ID);
         let registration_id: u32 = csprng.gen();
 
         let identity_key = IdentityKeyPair::generate(&mut csprng);
@@ -50,8 +53,11 @@ impl SecureDropSourceSession {
         // TODO: We'll be saving this (encrypted) on the server as we communicate.
         InMemSignalProtocolStore::new(identity_key, registration_id)
             .map(|store| SecureDropSourceSession {
+                source_uuid,
                 store,
                 registration_id,
+                sender_cert: None,
+                server_trust_root: None,
             })
             .map_err(|e| e.to_string().into())
     }
@@ -62,10 +68,8 @@ impl SecureDropSourceSession {
         let signed_pre_key_pair = KeyPair::generate(&mut csprng);
 
         let signed_pre_key_public = signed_pre_key_pair.public_key.serialize();
-        let keypair = self
-            .store
-            .get_identity_key_pair(None)
-            .map_err(|e| e.to_string())?;
+        let keypair =
+            block_on(self.store.get_identity_key_pair(None)).map_err(|e| e.to_string())?;
         let prekey_signature = keypair
             .private_key()
             .calculate_signature(&signed_pre_key_public, &mut csprng)
@@ -88,9 +92,11 @@ impl SecureDropSourceSession {
             &signed_pre_key_pair,
             &prekey_signature,
         );
-        self.store
-            .save_signed_pre_key(signed_prekey_id, &signed_prekey_record, None)
-            .map_err(|e| e.to_string())?;
+        block_on(
+            self.store
+                .save_signed_pre_key(signed_prekey_id, &signed_prekey_record, None),
+        )
+        .map_err(|e| e.to_string())?;
 
         let registration_data = RegistrationBundle {
             signed_prekey_id,
@@ -105,6 +111,27 @@ impl SecureDropSourceSession {
         JsValue::from_serde(&registration_data).map_err(|e| e.to_string().into())
     }
 
+    pub fn get_cert_and_validate(
+        &mut self,
+        raw_sender_cert: String,
+        trust_root: String,
+    ) -> Result<bool, JsValue> {
+        let sender_cert = SenderCertificate::deserialize(
+            &hex::decode(raw_sender_cert).map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
+        let trust_root_pubkey =
+            PublicKey::deserialize(&hex::decode(trust_root).map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
+        let current_timestamp = 105; // TODO
+        self.sender_cert = Some(sender_cert.clone());
+        self.server_trust_root = Some(trust_root_pubkey);
+        sender_cert
+            .validate(&trust_root_pubkey, current_timestamp)
+            .map(|_a| true)
+            .map_err(|e| e.to_string().into())
+    }
+
     /// TODO: Prevent duplicate registration IDs from source and journalist
     /// (matters on journalist side)
     pub fn process_prekey_bundle(
@@ -116,7 +143,6 @@ impl SecureDropSourceSession {
         signed_prekey: String,
         signed_prekey_sig: String,
     ) -> Result<bool, JsValue> {
-
         let mut csprng = OsRng;
         let journo_address = ProtocolAddress::new(address, DEVICE_ID);
         let signed_prekey_bytes = hex::decode(signed_prekey).map_err(|e| e.to_string())?;
@@ -137,28 +163,44 @@ impl SecureDropSourceSession {
         )
         .map_err(|e| e.to_string())?;
 
-        process_prekey_bundle(
+        block_on(process_prekey_bundle(
             &journo_address,
             &mut self.store.session_store,
             &mut self.store.identity_store,
             &pre_key_bundle,
             &mut csprng,
             None,
-        )
+        ))
         .map(|_a| true)
         .map_err(|e| e.to_string().into())
     }
 
     pub fn encrypt(&mut self, address: String, ptext: String) -> Result<String, JsValue> {
         let recipient = ProtocolAddress::new(address, DEVICE_ID);
-        message_encrypt(
+        block_on(message_encrypt(
             &ptext.into_bytes(),
             &recipient,
             &mut self.store.session_store,
             &mut self.store.identity_store,
             None,
-        )
+        ))
         .map(|data| hex::encode(data.serialize()))
+        .map_err(|e| e.to_string().into())
+    }
+
+    pub fn sealed_sender_encrypt(&mut self, address: String, ptext: String) -> Result<String, JsValue> {
+        let recipient = ProtocolAddress::new(address, DEVICE_ID);
+        let mut csprng = OsRng;
+        block_on(sealed_sender_encrypt(
+            &recipient,
+            &self.sender_cert.as_ref().expect("no sender cert!"),
+            &ptext.into_bytes(),
+            &mut self.store.session_store,
+            &mut self.store.identity_store,
+            None,
+            &mut csprng,
+        ))
+        .map(|data| hex::encode(data))
         .map_err(|e| e.to_string().into())
     }
 
@@ -170,7 +212,7 @@ impl SecureDropSourceSession {
         // TODO: Allow other message types here
         // &raw_ciphertext[..] because try_from requires &[u8], raw_ciphertext is Vec<u8>
         let message = SignalMessage::try_from(&raw_ciphertext[..]).map_err(|e| e.to_string())?;
-        let plaintext = message_decrypt(
+        let plaintext = block_on(message_decrypt(
             &CiphertextMessage::SignalMessage(message),
             &sender,
             &mut self.store.session_store,
@@ -179,9 +221,29 @@ impl SecureDropSourceSession {
             &mut self.store.signed_pre_key_store,
             &mut csprng,
             None,
-        )
+        ))
         .map_err(|e| e.to_string())?;
         String::from_utf8(plaintext).map_err(|e| e.to_string().into())
+    }
+
+    // TODO: Return sender also
+    pub fn sealed_sender_decrypt(&mut self, ciphertext: String) -> Result<String, JsValue> {
+        let raw_ciphertext = hex::decode(ciphertext).map_err(|e| e.to_string())?;
+        let plaintext = block_on(sealed_sender_decrypt(
+            &raw_ciphertext,
+            &self.server_trust_root.as_ref().expect("no trust root!"),
+            101,  // TODO: timestamp
+            Some(self.source_uuid.clone()),
+            Some(self.source_uuid.clone()),
+            DEVICE_ID,
+            &mut self.store.identity_store,
+            &mut self.store.session_store,
+            &mut self.store.pre_key_store,
+            &mut self.store.signed_pre_key_store,
+            None,
+        ))
+        .map_err(|e| e.to_string())?;
+        String::from_utf8(plaintext.message).map_err(|e| e.to_string().into())
     }
 }
 
