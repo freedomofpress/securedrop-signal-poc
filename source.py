@@ -1,4 +1,5 @@
 import json
+import os
 import requests
 import time
 
@@ -7,7 +8,7 @@ PAUSE = 2
 from signal_protocol import address, curve, identity_key, state, storage, session, protocol, session_cipher
 
 # Copy a source codename from the dev console
-passphrase = "graceless limes fidgeting disjoin payee savanna uneasily wish"
+passphrase = os.getenv("SECUREDROP_SOURCE_CODENAME", "graceless limes fidgeting disjoin payee savanna uneasily wish")
 
 # Root endpoint
 resp = requests.get('http://127.0.0.1:8080/api/v2/')
@@ -112,7 +113,7 @@ session.process_prekey_bundle(
     new_pre_key_bundle,
 )
 
-original_message = "Hello I do declare I have some Interesting Deets about a Bad Thing"
+original_message = b"Hello I do declare I have some Interesting Deets about a Bad Thing"
 
 outgoing_message = session_cipher.message_encrypt(
     store, journalist_address, original_message

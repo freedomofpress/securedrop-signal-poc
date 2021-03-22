@@ -1,1 +1,1 @@
-signal-protocol==0.2.1
+signal-protocol==0.2.2
