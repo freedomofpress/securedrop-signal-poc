@@ -14,7 +14,7 @@ serde = { version = "1.0", features = ["derive"] }
 wasm-bindgen = { version = "0.2.69", features = ["serde-serialize"] }
 hex = "0.4.2"
 console_error_panic_hook = "0.1.6"
-getrandom = { version = "0.1.15", features = ["wasm-bindgen"] }
+getrandom = { version = "0.2.2", features = ["wasm-bindgen", "js"] }
 futures = "0.3.7"
 
 [dependencies.web-sys]
