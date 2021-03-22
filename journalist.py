@@ -1,4 +1,5 @@
 import json
+import os
 import requests
 import time
 
@@ -6,9 +7,9 @@ PAUSE = 2
 
 from signal_protocol import address, curve, identity_key, storage, sealed_sender, session, session_cipher, state, protocol
 
-username = "journalist"
-passphrase = "this dont matter"
-totp = "123666"
+username = os.getenv("SECUREDROP_JOURNALIST_USERNAME", "journalist")
+passphrase = os.getenv("SECUREDROP_JOURNALIST_PASSPHRASE", "this dont matter")
+totp = os.getenv("SECUREDROP_JOURNALIST_TOTP", "123666")
 
 # Root endpoint
 resp = requests.get('http://127.0.0.1:8081/api/v2/')
