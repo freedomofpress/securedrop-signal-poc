@@ -3,15 +3,17 @@ prototype source + journalist clients for securedrop
 
 ⚠️ **these are prototypes for discussion only and are NOT for production use** ⚠️
 
-## Python clients
+## How to demo
 
-Python clients in `journalist.py` and `source.py` demo e2e comms through the server. Clients test source-initiated communication (i.e. journalist GET prekey bundle endpoint is not used).
+There is a Python client in `journalist.py` to demo e2ee comms through the server. To modify that Python client, simply install `requirements.txt`.
 
-To modify these Python clients, simply install `requirements.txt`.
+To try out and demo e2e encryption, you should:
 
-To try out and run these clients, you should run this server branch which provide the v2 APIs required: https://github.com/redshiftzero/securedrop/signal-proto
+0. Setup the `securedrop-source` crate as described at the bottom of this readme.
 
-Once the server is running, set the OTP token and password in the top of `journalist.py`. Then start `journalist.py`:
+1. Then run this server branch which provide the v2 APIs required: https://github.com/redshiftzero/securedrop/signal-proto
+
+2. Once the server is running, set the OTP token and password in the top of `journalist.py`. Then start `journalist.py`:
 
 ```
 python3 journalist.py
@@ -19,15 +21,11 @@ python3 journalist.py
 
 This will first perform signal registration, then wait for messages for sources.
 
-Then update `source.py` with the codename of an existing source, and start the source script:
+3. Then visit the source interface and create an account. When you login, it will perform signal registration without interaction from the user.
 
-```
-python3 source.py
-```
+4. Send a message to a journalist, then wait for responses. When the journalists responds (done in the `journalist.py` script), without interaction from the user, the journalist message should appear decrypted.
 
-This script will also perform signal registration, send a message to a journalist, then wait for responses. When the journalists responds (done in the `journalist.py` script), we decrypt.
-
-In a "real" deployment, we'd integrate the logic in `journalist.py` into `securedrop-client`. The logic in `source.py` would need to be ported to JS/wasm such that it runs in Tor Browser (see below).
+In a "real" deployment, we'd integrate the logic in `journalist.py` into `securedrop-client`.
 
 ## securedrop-source crate
 
