@@ -25,7 +25,9 @@ This will first perform signal registration, then wait for messages for sources.
 
 4. Send a message to a journalist, then wait for responses. When the journalists responds (done in the `journalist.py` script), without interaction from the user, the journalist message should appear decrypted.
 
-In a "real" deployment, we'd integrate the logic in `journalist.py` into `securedrop-client`.
+Note that the source sessions currently do not persist, i.e. this demo only works on first login (we'd need some logic to store the session data either locally in the browser or encrypted on the server). If you try it on subsequent logins, you'll get an error in the console indicating the session is not found.
+
+In a "real" deployment, the logic in `journalist.py` would run as part of `securedrop-client`.
 
 ## securedrop-source crate
 
