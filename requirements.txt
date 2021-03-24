@@ -1,1 +1,2 @@
 signal-protocol==0.2.2
+signal-groups==0.1.0

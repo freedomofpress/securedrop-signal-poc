@@ -6,6 +6,8 @@ import time
 PAUSE = 2
 
 from signal_protocol import address, curve, identity_key, storage, sealed_sender, session, session_cipher, state, protocol
+from signal_groups.api.server_params import ServerPublicParams
+from signal_groups.api.groups import GroupMasterKey, GroupSecretParams
 
 username = os.getenv("SECUREDROP_JOURNALIST_USERNAME", "journalist")
 passphrase = os.getenv("SECUREDROP_JOURNALIST_PASSPHRASE", "this dont matter")
@@ -75,6 +77,13 @@ resp = requests.post('http://127.0.0.1:8081/api/v2/register',
                      headers=auth_headers)
 print(resp, resp.text)
 time.sleep(PAUSE)
+
+print("getting public parameters..")
+resp = requests.get('http://127.0.0.1:8081/api/v2/server_params',
+                     headers=auth_headers)
+print(resp, resp.text)
+raw_server_public_params = resp.json().get("server_public_params")
+server_public_params = ServerPublicParams.deserialize(bytes.fromhex(raw_server_public_params))
 
 print("getting sender certificate...")
 resp = requests.get('http://127.0.0.1:8081/api/v2/sender_cert',
