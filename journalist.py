@@ -2,10 +2,12 @@ import json
 import os
 import requests
 import time
+from uuid import UUID
 
 PAUSE = 2
 
 from signal_protocol import address, curve, identity_key, storage, sealed_sender, session, session_cipher, state, protocol
+from signal_groups.api.auth import AuthCredential, AuthCredentialResponse
 from signal_groups.api.server_params import ServerPublicParams
 from signal_groups.api.groups import GroupMasterKey, GroupSecretParams
 
@@ -94,6 +96,16 @@ sender_cert = sealed_sender.SenderCertificate.deserialize(bytes.fromhex(raw_send
 trust_root = resp.json().get("trust_root")
 trust_root_pubkey = curve.PublicKey.deserialize(bytes.fromhex(trust_root))
 current_timestamp = 100
+
+print("getting auth credential...")
+resp = requests.get('http://127.0.0.1:8081/api/v2/auth_credential',
+                     headers=auth_headers)
+print(resp, resp.text)
+raw_auth_credential = resp.json().get("auth_credential")
+auth_credential_resp = AuthCredentialResponse.deserialize(bytes.fromhex(raw_auth_credential))
+redemption_time = 123456  # TODO, same as server side  # TODO: this is M4 but not used in the proof?
+uid = UUID(journalist_uuid).bytes
+auth_credential = server_public_params.receive_auth_credential(uid, redemption_time, auth_credential_resp)
 
 # Ensure certificate is still valid
 sender_cert.validate(trust_root_pubkey, current_timestamp)
