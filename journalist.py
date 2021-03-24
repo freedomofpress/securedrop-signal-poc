@@ -9,7 +9,7 @@ PAUSE = 2
 from signal_protocol import address, curve, identity_key, storage, sealed_sender, session, session_cipher, state, protocol
 from signal_groups.api.auth import AuthCredential, AuthCredentialResponse
 from signal_groups.api.server_params import ServerPublicParams
-from signal_groups.api.groups import GroupMasterKey, GroupSecretParams
+from signal_groups.api.groups import UuidCiphertext, GroupMasterKey, GroupSecretParams
 
 username = os.getenv("SECUREDROP_JOURNALIST_USERNAME", "journalist")
 passphrase = os.getenv("SECUREDROP_JOURNALIST_PASSPHRASE", "this dont matter")
@@ -141,6 +141,33 @@ while True:
     # We get sender from within the envelope instead of from what is stored on the server
     source_uuid = message.sender_uuid()
     source_address = address.ProtocolAddress(source_uuid, DEVICE_ID)
+
+    # TEST: example group creation
+    # print('trying to create a group')
+    # master_key = GroupMasterKey(os.urandom(32))
+    # group_secret_params = GroupSecretParams.derive_from_master_key(master_key)
+    # group_public_params = group_secret_params.get_public_params()
+
+    # auth_credential_presentation = server_public_params.create_auth_credential_presentation(
+    #     os.urandom(32),
+    #     group_secret_params,
+    #     auth_credential
+    # )
+
+    # my_uuid_ciphertext = group_secret_params.encrypt_uuid(UUID(journalist_uuid).bytes)
+    # source_uuid_ciphertext = group_secret_params.encrypt_uuid(UUID(source_uuid).bytes)
+    # resp = requests.post('http://127.0.0.1:8081/api/v2/groups',
+    #                  data=json.dumps(
+    #                      {"auth_credential_presentation": auth_credential_presentation.serialize().hex(),
+    #                       "group_id": bytes(group_public_params.get_group_identifier()).hex(),
+    #                       "group_public_params": group_public_params.serialize().hex(),
+    #                       "group_members": [source_uuid_ciphertext.serialize().hex()],
+    #                       "group_admins": [my_uuid_ciphertext.serialize().hex()],
+    #                       }),
+    #                  headers=auth_headers)
+    # print(resp, resp.text)
+    # time.sleep(PAUSE)
+    # ENDTEST
 
     print(message.message().decode('utf8'))
     time.sleep(PAUSE)
