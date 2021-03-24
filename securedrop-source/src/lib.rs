@@ -9,6 +9,7 @@ use std::convert::TryFrom;
 // use std::time::{SystemTime, UNIX_EPOCH};
 use futures::executor::block_on;
 
+use zkgroup::api::ServerPublicParams;
 use libsignal_protocol_rust::{
     message_decrypt, message_encrypt, process_prekey_bundle, CiphertextMessage, IdentityKey,
     IdentityKeyPair, InMemSignalProtocolStore, KeyPair, PreKeyBundle, ProtocolAddress, PublicKey,
@@ -34,6 +35,7 @@ pub struct SecureDropSourceSession {
     pub registration_id: u32,
     sender_cert: Option<SenderCertificate>,
     server_trust_root: Option<PublicKey>,
+    server_public_params: Option<ServerPublicParams>,
 }
 
 #[wasm_bindgen]
@@ -58,6 +60,7 @@ impl SecureDropSourceSession {
                 registration_id,
                 sender_cert: None,
                 server_trust_root: None,
+                server_public_params: None,
             })
             .map_err(|e| e.to_string().into())
     }
@@ -109,6 +112,22 @@ impl SecureDropSourceSession {
         };
 
         JsValue::from_serde(&registration_data).map_err(|e| e.to_string().into())
+    }
+
+    pub fn save_server_params(
+        &mut self,
+        server_params: String,
+    ) -> Result<bool, JsValue> {
+        // let server_public_params = ServerPublicParams::deserialize(
+        //     .map_err(|e| e.to_string())?,
+        // );
+        let server_params_bytes = &hex::decode(server_params).map_err(|e| e.to_string())?;
+        let server_public_params: zkgroup::api::server_params::ServerPublicParams = match bincode::deserialize(server_params_bytes) {
+            Ok(result) => result,
+            Err(err) => return Err(err.to_string().into()),
+        };
+        self.server_public_params = Some(server_public_params);
+        Ok(true)
     }
 
     pub fn get_cert_and_validate(
