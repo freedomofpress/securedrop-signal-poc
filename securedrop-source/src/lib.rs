@@ -8,13 +8,16 @@ use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 // use std::time::{SystemTime, UNIX_EPOCH};
 use futures::executor::block_on;
+use uuid::Uuid;
 
-use zkgroup::api::ServerPublicParams;
 use libsignal_protocol_rust::{
-    message_decrypt, message_encrypt, process_prekey_bundle, CiphertextMessage, IdentityKey,
-    IdentityKeyPair, InMemSignalProtocolStore, KeyPair, PreKeyBundle, ProtocolAddress, PublicKey,
-    SenderCertificate, SignalMessage, SignedPreKeyRecord, IdentityKeyStore, SignedPreKeyStore, sealed_sender_encrypt, sealed_sender_decrypt,
+    message_decrypt, message_encrypt, process_prekey_bundle, sealed_sender_decrypt,
+    sealed_sender_encrypt, CiphertextMessage, IdentityKey, IdentityKeyPair, IdentityKeyStore,
+    InMemSignalProtocolStore, KeyPair, PreKeyBundle, ProtocolAddress, PublicKey, SenderCertificate,
+    SignalMessage, SignedPreKeyRecord, SignedPreKeyStore,
 };
+use zkgroup::api::auth::{AuthCredential, AuthCredentialResponse};
+use zkgroup::api::ServerPublicParams;
 
 const DEVICE_ID: u32 = 1;
 
@@ -36,6 +39,7 @@ pub struct SecureDropSourceSession {
     sender_cert: Option<SenderCertificate>,
     server_trust_root: Option<PublicKey>,
     server_public_params: Option<ServerPublicParams>,
+    auth_cred: Option<AuthCredential>,
 }
 
 #[wasm_bindgen]
@@ -61,6 +65,7 @@ impl SecureDropSourceSession {
                 sender_cert: None,
                 server_trust_root: None,
                 server_public_params: None,
+                auth_cred: None,
             })
             .map_err(|e| e.to_string().into())
     }
@@ -114,18 +119,39 @@ impl SecureDropSourceSession {
         JsValue::from_serde(&registration_data).map_err(|e| e.to_string().into())
     }
 
-    pub fn save_server_params(
-        &mut self,
-        server_params: String,
-    ) -> Result<bool, JsValue> {
-        // let server_public_params = ServerPublicParams::deserialize(
-        //     .map_err(|e| e.to_string())?,
-        // );
-        let server_params_bytes = &hex::decode(server_params).map_err(|e| e.to_string())?;
-        let server_public_params: zkgroup::api::server_params::ServerPublicParams = match bincode::deserialize(server_params_bytes) {
+    pub fn save_auth_credential(&mut self, auth_cred_resp: String) -> Result<bool, JsValue> {
+        let auth_cred_bytes = &hex::decode(auth_cred_resp).map_err(|e| e.to_string())?;
+        let auth_cred_response: AuthCredentialResponse = match bincode::deserialize(auth_cred_bytes)
+        {
             Ok(result) => result,
             Err(err) => return Err(err.to_string().into()),
         };
+
+        let redemption_time = 123456; // TODO, same as server side
+
+        // TODO: return informative Err if UUID does not parse
+        let uid = Uuid::parse_str(&self.source_uuid).unwrap();
+
+        // Now verify proof and get AuthCredential
+        let auth_credential = match self
+            .server_public_params
+            .expect("err: no server params available!")
+            .receive_auth_credential(*uid.as_bytes(), redemption_time, &auth_cred_response) {
+                Ok(result) => result,
+                Err(err) => return Err("err: invalid AuthCredentialResponse".into()),  // TODO: Use ZkGroupError here
+            };
+
+        self.auth_cred = Some(auth_credential);
+        Ok(true)
+    }
+
+    pub fn save_server_params(&mut self, server_params: String) -> Result<bool, JsValue> {
+        let server_params_bytes = &hex::decode(server_params).map_err(|e| e.to_string())?;
+        let server_public_params: zkgroup::api::server_params::ServerPublicParams =
+            match bincode::deserialize(server_params_bytes) {
+                Ok(result) => result,
+                Err(err) => return Err(err.to_string().into()),
+            };
         self.server_public_params = Some(server_public_params);
         Ok(true)
     }
@@ -154,14 +180,12 @@ impl SecureDropSourceSession {
     // TODO: Currently we only allow a single group per source. In a true multi-tenant scenario
     // we may want to allow a source to have multiple groups if they are corresponding with
     // several organizations using the same source account.
-    pub fn create_group(
-        &mut self,
-        uuids_of_members: String,
-    ) {
+    pub fn create_group(&mut self, uuids_of_members: String) {
         let mut csprng = OsRng;
         let randomness: [u8; 32] = csprng.gen();
         let master_key = zkgroup::groups::GroupMasterKey::new(randomness);
-        let group_secret_params = zkgroup::groups::GroupSecretParams::derive_from_master_key(master_key);
+        let group_secret_params =
+            zkgroup::groups::GroupSecretParams::derive_from_master_key(master_key);
         let group_public_params = group_secret_params.get_public_params();
         let group_id = group_public_params.get_group_identifier();
         // TODO: Put group public params on server along with encrypted uuids
@@ -223,7 +247,11 @@ impl SecureDropSourceSession {
         .map_err(|e| e.to_string().into())
     }
 
-    pub fn sealed_sender_encrypt(&mut self, address: String, ptext: String) -> Result<String, JsValue> {
+    pub fn sealed_sender_encrypt(
+        &mut self,
+        address: String,
+        ptext: String,
+    ) -> Result<String, JsValue> {
         let recipient = ProtocolAddress::new(address, DEVICE_ID);
         let mut csprng = OsRng;
         block_on(sealed_sender_encrypt(
@@ -267,7 +295,7 @@ impl SecureDropSourceSession {
         let plaintext = block_on(sealed_sender_decrypt(
             &raw_ciphertext,
             &self.server_trust_root.as_ref().expect("no trust root!"),
-            101,  // TODO: timestamp
+            101, // TODO: timestamp
             Some(self.source_uuid.clone()),
             Some(self.source_uuid.clone()),
             DEVICE_ID,
