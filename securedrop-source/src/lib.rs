@@ -151,6 +151,22 @@ impl SecureDropSourceSession {
             .map_err(|e| e.to_string().into())
     }
 
+    // TODO: Currently we only allow a single group per source. In a true multi-tenant scenario
+    // we may want to allow a source to have multiple groups if they are corresponding with
+    // several organizations using the same source account.
+    pub fn create_group(
+        &mut self,
+        uuids_of_members: String,
+    ) {
+        let mut csprng = OsRng;
+        let randomness: [u8; 32] = csprng.gen();
+        let master_key = zkgroup::groups::GroupMasterKey::new(randomness);
+        let group_secret_params = zkgroup::groups::GroupSecretParams::derive_from_master_key(master_key);
+        let group_public_params = group_secret_params.get_public_params();
+        let group_id = group_public_params.get_group_identifier();
+        // TODO: Put group public params on server along with encrypted uuids
+    }
+
     /// TODO: Prevent duplicate registration IDs from source and journalist
     /// (matters on journalist side)
     pub fn process_prekey_bundle(
