@@ -179,16 +179,21 @@ while True:
     # time.sleep(PAUSE)
     # ENDTEST
 
-    message_content = message.message()
-    try:  # See if it's a group message
-        group_key = GroupMasterKey.deserialize(message_content)
+    # TODO: clean up, strip off prefix bytes
+    message_content = json.loads(b"{" + message.message().split(b"{")[1])
+    if message_content["mtype"] == 1:
+        group_key = GroupMasterKey.deserialize(bytes.fromhex(message_content["message"]))
         group_secret_params = GroupSecretParams.derive_from_master_key(group_key)
         group_public_params = group_secret_params.get_public_params()
         group_id = group_public_params.get_group_identifier()
         print("woohoo we got the deets for GROUP_ID: {}".format(group_id))
-    except:  # Else it's a regular message
-        print(message_content.decode('utf8'))
+    elif message_content["mtype"] == 11:
+        print('got a message in ye olde group: {}'.format(bytes.fromhex(message_content["group_id"])))
+        print(bytes.fromhex(message_content["message"]))
         time.sleep(PAUSE)
+    else:
+        breakpoint()
+        raise ValueError("got unexpected message type!")
 
     print("confirming receipt and successful decryption of message")
     resp = requests.post(f'http://127.0.0.1:8081/api/v2/messages/confirmation/{message_uuid}',

@@ -33,6 +33,13 @@ pub struct RegistrationBundle {
 }
 
 #[derive(Serialize, Deserialize)]
+pub struct SecureDropGroupMessage {
+    pub mtype: u8,
+    pub group_id: [u8; 32],
+    pub message: String,
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct UuidEntry {
     pub string: String,
 }
@@ -346,13 +353,68 @@ impl SecureDropSourceSession {
             Some(result) => result,
             None => return Err("err: no GroupMasterKey found".into()), // TODO: Use ZkGroupError here
         };
+        let group_params = match self.group_public_params {
+            Some(result) => result,
+            None => return Err("err: no GroupPublicParams found".into()), // TODO: Use ZkGroupError here
+        };
 
         let recipient = ProtocolAddress::new(address, DEVICE_ID);
         let mut csprng = OsRng;
+
+        // TODO: Clean up serialization
+        // let group_message = SecureDropGroupMessage {
+        //     mtype: 1,
+        //     group_id: group_params.get_group_identifier(),
+        //     message: hex::encode(bincode::serialize(&group_key).unwrap()),
+        // };
+        let group_id_str = hex::encode(group_params.get_group_identifier());
+        let group_key_str = hex::encode(bincode::serialize(&group_key).unwrap());
+        let group_message = format!(
+            "{{\"mtype\": 1, \"group_id\": {:?}, \"message\": {:?}}}",
+            group_id_str, group_key_str
+        );
+
         block_on(sealed_sender_encrypt(
             &recipient,
             &self.sender_cert.as_ref().expect("no sender cert!"),
-            &bincode::serialize(&group_key).unwrap(),
+            group_message.as_bytes(), //&bincode::serialize(&group_message).unwrap(),
+            &mut self.store.session_store,
+            &mut self.store.identity_store,
+            None,
+            &mut csprng,
+        ))
+        .map(|data| hex::encode(data))
+        .map_err(|e| e.to_string().into())
+    }
+
+    pub fn group_sealed_sender_encrypt(
+        &mut self,
+        address: String,
+        ptext: String,
+    ) -> Result<String, JsValue> {
+        let recipient = ProtocolAddress::new(address, DEVICE_ID);
+        let mut csprng = OsRng;
+
+        let group_params = match self.group_public_params {
+            Some(result) => result,
+            None => return Err("err: no GroupPublicParams found".into()), // TODO: Use ZkGroupError here
+        };
+
+        let group_message = format!(
+            "{{\"mtype\": 11, \"group_id\": {:?}, \"message\": {:?}}}",
+            hex::encode(group_params.get_group_identifier()),
+            hex::encode(ptext)
+        );
+        // TODO: Clean up serialization
+        // SecureDropGroupMessage {
+        //     mtype: 11,
+        //     group_id: group_params.get_group_identifier(),
+        //     message: hex::encode(ptext),
+        // };
+        block_on(sealed_sender_encrypt(
+            &recipient,
+            &self.sender_cert.as_ref().expect("no sender cert!"),
+            group_message.as_bytes(), //&bincode::serialize(&group_message).unwrap(),
             &mut self.store.session_store,
             &mut self.store.identity_store,
             None,
