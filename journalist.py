@@ -179,8 +179,16 @@ while True:
     # time.sleep(PAUSE)
     # ENDTEST
 
-    print(message.message().decode('utf8'))
-    time.sleep(PAUSE)
+    message_content = message.message()
+    try:  # See if it's a group message
+        group_key = GroupMasterKey.deserialize(message_content)
+        group_secret_params = GroupSecretParams.derive_from_master_key(group_key)
+        group_public_params = group_secret_params.get_public_params()
+        group_id = group_public_params.get_group_identifier()
+        print("woohoo we got the deets for GROUP_ID: {}".format(group_id))
+    except:  # Else it's a regular message
+        print(message_content.decode('utf8'))
+        time.sleep(PAUSE)
 
     print("confirming receipt and successful decryption of message")
     resp = requests.post(f'http://127.0.0.1:8081/api/v2/messages/confirmation/{message_uuid}',

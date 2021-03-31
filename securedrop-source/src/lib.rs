@@ -340,6 +340,28 @@ impl SecureDropSourceSession {
         .map_err(|e| e.to_string().into())
     }
 
+    // We pack up the group key and send it to new group participants.
+    pub fn sealed_send_encrypted_group_key(&mut self, address: String) -> Result<String, JsValue> {
+        let group_key = match self.group_master_key {
+            Some(result) => result,
+            None => return Err("err: no GroupMasterKey found".into()), // TODO: Use ZkGroupError here
+        };
+
+        let recipient = ProtocolAddress::new(address, DEVICE_ID);
+        let mut csprng = OsRng;
+        block_on(sealed_sender_encrypt(
+            &recipient,
+            &self.sender_cert.as_ref().expect("no sender cert!"),
+            &bincode::serialize(&group_key).unwrap(),
+            &mut self.store.session_store,
+            &mut self.store.identity_store,
+            None,
+            &mut csprng,
+        ))
+        .map(|data| hex::encode(data))
+        .map_err(|e| e.to_string().into())
+    }
+
     pub fn decrypt(&mut self, address: String, ciphertext: String) -> Result<String, JsValue> {
         let sender = ProtocolAddress::new(address, DEVICE_ID);
         let mut csprng = OsRng;
