@@ -18,6 +18,7 @@ use libsignal_protocol_rust::{
 };
 use zkgroup::api::auth::{AuthCredential, AuthCredentialResponse};
 use zkgroup::api::ServerPublicParams;
+use zkgroup::groups::{GroupMasterKey, GroupPublicParams, GroupSecretParams};
 
 const DEVICE_ID: u32 = 1;
 
@@ -31,6 +32,20 @@ pub struct RegistrationBundle {
     pub registration_id: u32,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct UuidEntry {
+    pub string: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct PublicGroupCreationBundle {
+    pub auth_credential_presentation: String,
+    pub group_id: String,
+    pub group_public_params: String,
+    pub group_members: Vec<String>, // Ciphertexts
+    pub group_admins: Vec<String>,  // Ciphertexts
+}
+
 #[wasm_bindgen]
 pub struct SecureDropSourceSession {
     source_uuid: String,
@@ -40,6 +55,9 @@ pub struct SecureDropSourceSession {
     server_trust_root: Option<PublicKey>,
     server_public_params: Option<ServerPublicParams>,
     auth_cred: Option<AuthCredential>,
+    group_master_key: Option<GroupMasterKey>,
+    group_secret_params: Option<GroupSecretParams>,
+    group_public_params: Option<GroupPublicParams>,
 }
 
 #[wasm_bindgen]
@@ -66,8 +84,15 @@ impl SecureDropSourceSession {
                 server_trust_root: None,
                 server_public_params: None,
                 auth_cred: None,
+                group_master_key: None,
+                group_secret_params: None,
+                group_public_params: None,
             })
             .map_err(|e| e.to_string().into())
+    }
+
+    pub fn uuid(&self) -> String {
+        self.source_uuid.clone()
     }
 
     /// Called when we first generate keys prior to initial registration.
@@ -136,10 +161,11 @@ impl SecureDropSourceSession {
         let auth_credential = match self
             .server_public_params
             .expect("err: no server params available!")
-            .receive_auth_credential(*uid.as_bytes(), redemption_time, &auth_cred_response) {
-                Ok(result) => result,
-                Err(err) => return Err("err: invalid AuthCredentialResponse".into()),  // TODO: Use ZkGroupError here
-            };
+            .receive_auth_credential(*uid.as_bytes(), redemption_time, &auth_cred_response)
+        {
+            Ok(result) => result,
+            Err(_) => return Err("err: invalid AuthCredentialResponse".into()), // TODO: Use ZkGroupError here
+        };
 
         self.auth_cred = Some(auth_credential);
         Ok(true)
@@ -180,15 +206,62 @@ impl SecureDropSourceSession {
     // TODO: Currently we only allow a single group per source. In a true multi-tenant scenario
     // we may want to allow a source to have multiple groups if they are corresponding with
     // several organizations using the same source account.
-    pub fn create_group(&mut self, uuids_of_members: String) {
+
+    // Cannot use Vec<String> - see https://github.com/rustwasm/wasm-bindgen/issues/168
+    pub fn create_group(
+        &mut self,
+        uuids_of_members: &JsValue,
+        uuids_of_admins: &JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let uuids_of_members: Vec<UuidEntry> = uuids_of_members.into_serde().unwrap();
+        let uuids_of_admins: Vec<UuidEntry> = uuids_of_admins.into_serde().unwrap();
+
         let mut csprng = OsRng;
-        let randomness: [u8; 32] = csprng.gen();
-        let master_key = zkgroup::groups::GroupMasterKey::new(randomness);
+        let key_randomness: [u8; 32] = csprng.gen();
+        let master_key = zkgroup::groups::GroupMasterKey::new(key_randomness);
         let group_secret_params =
             zkgroup::groups::GroupSecretParams::derive_from_master_key(master_key);
         let group_public_params = group_secret_params.get_public_params();
         let group_id = group_public_params.get_group_identifier();
-        // TODO: Put group public params on server along with encrypted uuids
+
+        self.group_secret_params = Some(group_secret_params);
+        self.group_public_params = Some(group_public_params);
+        self.group_master_key = Some(master_key);
+
+        let auth_cred = match self.auth_cred {
+            Some(result) => result,
+            None => return Err("err: no AuthCred found".into()), // TODO: Use ZkGroupError here
+        };
+        let cred_randomness: [u8; 32] = csprng.gen();
+        let auth_credential_presentation = self
+            .server_public_params
+            .expect("err: no server params available!")
+            .create_auth_credential_presentation(cred_randomness, group_secret_params, auth_cred);
+
+        let mut admins = Vec::new();
+        for admin in uuids_of_admins.iter() {
+            let user = Uuid::parse_str(&admin.string).expect("err: could not parse administrator");
+            let ciphertext = group_secret_params.encrypt_uuid(*user.as_bytes());
+            admins.push(hex::encode(&bincode::serialize(&ciphertext).unwrap()));
+        }
+
+        let mut members = Vec::new();
+        for member in uuids_of_members.iter() {
+            let user = Uuid::parse_str(&member.string).expect("err: could not parse member");
+            let ciphertext = group_secret_params.encrypt_uuid(*user.as_bytes());
+            members.push(hex::encode(&bincode::serialize(&ciphertext).unwrap()));
+        }
+
+        let group_creation_data = PublicGroupCreationBundle {
+            auth_credential_presentation: hex::encode(
+                &bincode::serialize(&auth_credential_presentation).unwrap(),
+            ),
+            group_id: hex::encode(group_id),
+            group_public_params: hex::encode(&bincode::serialize(&group_public_params).unwrap()),
+            group_members: members,
+            group_admins: admins,
+        };
+        JsValue::from_serde(&group_creation_data).map_err(|e| e.to_string().into())
     }
 
     /// TODO: Prevent duplicate registration IDs from source and journalist
