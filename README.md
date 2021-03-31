@@ -5,7 +5,7 @@ prototype source + journalist clients for securedrop
 
 ## How to demo
 
-There is a Python client in `journalist.py` to demo e2ee comms through the server. To modify that Python client, simply install `requirements.txt`.
+There are Python clients in `journalist.py` (user `journalist`) and `journalist2.py` (user `dellsberg`) to demo e2ee comms through the server. To modify that Python client, simply install `requirements.txt`.
 
 To try out and demo e2e encryption, you should:
 
@@ -19,15 +19,15 @@ To try out and demo e2e encryption, you should:
 python3 journalist.py
 ```
 
-This will first perform signal registration, then wait for messages for sources.
+This will first perform signal registration, then wait for messages for sources. In another Terminal, Do the same with `journalist2.py` (this simulates a conversation between one source and multiple journalists).
 
 3. Then visit the source interface and create an account. When you login, it will perform signal registration without interaction from the user.
 
-4. Send a message to a journalist, then wait for responses. When the journalists responds (done in the `journalist.py` script), without interaction from the user, the journalist message should appear decrypted.
+4. Send a message to a journalist, then wait for responses. When the journalists respond (done in the `journalist*.py` scripts), without interaction from the user, the journalist message should appear decrypted.
 
 Note that the source sessions currently do not persist, i.e. this demo only works on first login (we'd need some logic to store the session data either locally in the browser or encrypted on the server). If you try it on subsequent logins, you'll get an error in the console indicating the session is not found.
 
-In a "real" deployment, the logic in `journalist.py` would run as part of `securedrop-client`.
+In a "real" deployment, the logic in `journalist*.py` would run as part of `securedrop-client`.
 
 ## securedrop-source crate
 
