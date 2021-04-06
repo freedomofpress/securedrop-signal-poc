@@ -92,6 +92,7 @@ resp = requests.get('http://127.0.0.1:8081/api/v2/server_params',
 print(resp, resp.text)
 raw_server_public_params = resp.json().get("server_public_params")
 server_public_params = ServerPublicParams.deserialize(bytes.fromhex(raw_server_public_params))
+time.sleep(PAUSE)
 
 print("getting sender certificate...")
 resp = requests.get('http://127.0.0.1:8081/api/v2/sender_cert',
@@ -102,6 +103,7 @@ sender_cert = sealed_sender.SenderCertificate.deserialize(bytes.fromhex(raw_send
 trust_root = resp.json().get("trust_root")
 trust_root_pubkey = curve.PublicKey.deserialize(bytes.fromhex(trust_root))
 current_timestamp = 100
+time.sleep(PAUSE)
 
 print("getting auth credential...")
 resp = requests.get('http://127.0.0.1:8081/api/v2/auth_credential',
@@ -112,6 +114,7 @@ auth_credential_resp = AuthCredentialResponse.deserialize(bytes.fromhex(raw_auth
 redemption_time = 123456  # TODO, same as server side  # TODO: this is M4 but not used in the proof?
 uid = UUID(journalist_uuid).bytes
 auth_credential = server_public_params.receive_auth_credential(uid, redemption_time, auth_credential_resp)
+time.sleep(PAUSE)
 
 # Ensure certificate is still valid
 sender_cert.validate(trust_root_pubkey, current_timestamp)
@@ -186,7 +189,35 @@ while True:
         group_secret_params = GroupSecretParams.derive_from_master_key(group_key)
         group_public_params = group_secret_params.get_public_params()
         group_id = group_public_params.get_group_identifier()
+        auth_credential_presentation = server_public_params.create_auth_credential_presentation(
+            os.urandom(32),
+            group_secret_params,
+            auth_credential
+        )
+
         print("woohoo we got the deets for GROUP_ID: {}".format(group_id))
+
+        print("fetching group membership")
+        resp = requests.post(f'http://127.0.0.1:8081/api/v2/groups/members',
+                             data=json.dumps(
+                         {"auth_credential_presentation": auth_credential_presentation.serialize().hex(),
+                          "group_public_params": group_public_params.serialize().hex(),
+                          }),)
+        print(resp, resp.text)
+
+        group_members_ciphers = resp.json().get("members", None)
+
+        uuids_in_group = []
+        for member in group_members_ciphers:
+            group_member = UuidCiphertext.deserialize(bytes.fromhex(member))
+            plaintext_member = group_secret_params.decrypt_uuid(group_member)
+            plaintext_uuid = str(UUID(bytes=bytes(bytearray(plaintext_member))))
+            if plaintext_uuid != journalist_uuid:
+                uuids_in_group.append(plaintext_uuid)
+
+        print("got members from the server and decrypted, in addition to me we have:")
+        print(uuids_in_group)
+
     elif message_content["mtype"] == 11:
         print('got a message in ye olde group: {}'.format(bytes.fromhex(message_content["group_id"])))
         print(bytes.fromhex(message_content["message"]))
