@@ -56,6 +56,7 @@ pub struct PublicGroupCreationBundle {
 #[wasm_bindgen]
 pub struct SecureDropSourceSession {
     source_uuid: String,
+    api_token: String,
     store: InMemSignalProtocolStore,
     pub registration_id: u32,
     sender_cert: Option<SenderCertificate>,
@@ -69,7 +70,7 @@ pub struct SecureDropSourceSession {
 
 #[wasm_bindgen]
 impl SecureDropSourceSession {
-    pub fn new(source_uuid: String) -> Result<SecureDropSourceSession, JsValue> {
+    pub fn new(source_uuid: String, api_token: String) -> Result<SecureDropSourceSession, JsValue> {
         // Lets panic messages pass through to the JavaScript console for debugging
         panic::set_hook(Box::new(console_error_panic_hook::hook));
 
@@ -85,6 +86,7 @@ impl SecureDropSourceSession {
         InMemSignalProtocolStore::new(identity_key, registration_id)
             .map(|store| SecureDropSourceSession {
                 source_uuid,
+                api_token,
                 store,
                 registration_id,
                 sender_cert: None,
@@ -100,6 +102,10 @@ impl SecureDropSourceSession {
 
     pub fn uuid(&self) -> String {
         self.source_uuid.clone()
+    }
+
+    pub fn token(&self) -> String {
+        self.api_token.clone()
     }
 
     /// Called when we first generate keys prior to initial registration.
