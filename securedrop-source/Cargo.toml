@@ -13,6 +13,7 @@ libsignal-protocol-rust = { git = "https://github.com/freedomofpress/libsignal-c
 zkgroup = { git = "https://github.com/redshiftzero/zkgroup", rev="ea80ccc47bc8363d15906fb0f57588e940b589a0" }
 rand = "0.7.3"
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.64"
 wasm-bindgen = { version = "0.2.69", features = ["serde-serialize"] }
 hex = "0.4.2"
 console_error_panic_hook = "0.1.6"

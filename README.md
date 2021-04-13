@@ -37,13 +37,19 @@ Group messages _must_ have `group_id` (`[u8; 32]`).
 The `mtype` field is a `u8` with the following meaning:
 * 0: reserved.
 * 1: `SD_GROUP_MANAGEMENT_START`. Group creation message. `group_id` contains the group identifier (derived from the public parameters). `msg` field contains the `GroupMasterKey`.
-* 2-9: reserved for `SD_GROUP_MANAGEMENT*` messages.
-* 10: `SD_GROUP_MESSAGE`. `group_id` contains the group identifier (derived from the public parameters). `msg` field contains the message body to be displayed to the user.
-* 11-*: available.
+* 2-10s: reserved for `SD_GROUP_MANAGEMENT*` messages.
+* 11: `SD_GROUP_MESSAGE`. `group_id` contains the group identifier (derived from the public parameters). `msg` field contains the message body to be displayed to the user.
+* 12-*: available.
 
 ## securedrop-source crate
 
 `securedrop-source` is a Rust crate that provides a high-level wrapper for the cryptographic operations required to register as a Signal client and encrypt and decrypt messages. It compiles to WebAssembly for use on the SecureDrop source interface to enable client-side cryptographic operations.
+
+To view the docs for this crate:
+
+```
+cargo doc --open
+```
 
 ### Development
 
