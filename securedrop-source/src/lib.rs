@@ -5,18 +5,27 @@ use std::panic;
 use rand::rngs::OsRng;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use serde_json;
 use std::convert::TryFrom;
 // use std::time::{SystemTime, UNIX_EPOCH};
 use futures::executor::block_on;
+use uuid::Uuid;
 
 use libsignal_protocol_rust::{
-    message_decrypt, message_encrypt, process_prekey_bundle, CiphertextMessage, IdentityKey,
-    IdentityKeyPair, InMemSignalProtocolStore, KeyPair, PreKeyBundle, ProtocolAddress, PublicKey,
-    SenderCertificate, SignalMessage, SignedPreKeyRecord, IdentityKeyStore, SignedPreKeyStore, sealed_sender_encrypt, sealed_sender_decrypt,
+    message_decrypt, message_encrypt, process_prekey_bundle, sealed_sender_decrypt,
+    sealed_sender_encrypt, CiphertextMessage, IdentityKey, IdentityKeyPair, IdentityKeyStore,
+    InMemSignalProtocolStore, KeyPair, PreKeyBundle, ProtocolAddress, PublicKey, SenderCertificate,
+    SignalMessage, SignedPreKeyRecord, SignedPreKeyStore,
 };
+use zkgroup::api::auth::{AuthCredential, AuthCredentialResponse};
+use zkgroup::api::ServerPublicParams;
+use zkgroup::groups::{GroupMasterKey, GroupPublicParams, GroupSecretParams};
 
 const DEVICE_ID: u32 = 1;
 
+/// `RegistrationBundle` contains the required data for initial
+/// Signal registration with the server, except one-time prekeys, which are
+/// a TODO.
 #[derive(Serialize, Deserialize)]
 pub struct RegistrationBundle {
     pub signed_prekey_id: u32,
@@ -27,18 +36,65 @@ pub struct RegistrationBundle {
     pub registration_id: u32,
 }
 
+/// Number that dsescribes the message type.
+#[derive(Serialize, Deserialize)]
+pub enum SecureDropV1MessageType {
+    SdGroupManagementStart = 1,
+    SdGroupMessage = 11,
+}
+
+/// `SecureDropGroupMessage` represents an individual message or state change in
+/// the group.
+#[derive(Serialize, Deserialize)]
+pub struct SecureDropGroupMessage {
+    pub mtype: SecureDropV1MessageType,
+    pub group_id: String,
+    pub message: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct UuidEntry {
+    pub string: String,
+}
+
+/// `PublicGroupCreationBundle` contains the data required for creating
+/// a group on the server.
+/// The group members and admins fields each contain a vector of ciphertexts.
+#[derive(Serialize, Deserialize)]
+pub struct PublicGroupCreationBundle {
+    pub auth_credential_presentation: String,
+    pub group_id: String,
+    pub group_public_params: String,
+    pub group_members: Vec<String>, // Ciphertexts
+    pub group_admins: Vec<String>,  // Ciphertexts
+}
+
+/// `SecureDropSourceSession` tracks the keys, IDs, and other elements the
+/// source needs to communicate.
+///
+/// Caveat: Currently we only allow a single group per source. In a multi-tenant scenario
+/// we may want to allow a source to have multiple groups if they are corresponding with
+/// several organizations using the same source account.
+///
 #[wasm_bindgen]
 pub struct SecureDropSourceSession {
     source_uuid: String,
+    api_token: String,
+    /// The protocol store
     store: InMemSignalProtocolStore,
     pub registration_id: u32,
     sender_cert: Option<SenderCertificate>,
     server_trust_root: Option<PublicKey>,
+    server_public_params: Option<ServerPublicParams>,
+    auth_cred: Option<AuthCredential>,
+    group_master_key: Option<GroupMasterKey>,
+    group_secret_params: Option<GroupSecretParams>,
+    group_public_params: Option<GroupPublicParams>,
 }
 
 #[wasm_bindgen]
 impl SecureDropSourceSession {
-    pub fn new(source_uuid: String) -> Result<SecureDropSourceSession, JsValue> {
+    pub fn new(source_uuid: String, api_token: String) -> Result<SecureDropSourceSession, JsValue> {
         // Lets panic messages pass through to the JavaScript console for debugging
         panic::set_hook(Box::new(console_error_panic_hook::hook));
 
@@ -54,12 +110,28 @@ impl SecureDropSourceSession {
         InMemSignalProtocolStore::new(identity_key, registration_id)
             .map(|store| SecureDropSourceSession {
                 source_uuid,
+                api_token,
                 store,
                 registration_id,
                 sender_cert: None,
                 server_trust_root: None,
+                server_public_params: None,
+                auth_cred: None,
+                group_master_key: None,
+                group_secret_params: None,
+                group_public_params: None,
             })
             .map_err(|e| e.to_string().into())
+    }
+
+    /// Returns the UUID used by the source. This matches the UUID on the server.
+    pub fn uuid(&self) -> String {
+        self.source_uuid.clone()
+    }
+
+    /// Returns the current API token being used by the source.
+    pub fn token(&self) -> String {
+        self.api_token.clone()
     }
 
     /// Called when we first generate keys prior to initial registration.
@@ -111,6 +183,48 @@ impl SecureDropSourceSession {
         JsValue::from_serde(&registration_data).map_err(|e| e.to_string().into())
     }
 
+    /// Takes an `AuthCredResponse` provided by the server, verifies it, and stores
+    /// the `AuthCredential` on the session for use with anonymous endpoints on the server.
+    pub fn save_auth_credential(&mut self, auth_cred_resp: String) -> Result<bool, JsValue> {
+        let auth_cred_bytes = &hex::decode(auth_cred_resp).map_err(|e| e.to_string())?;
+        let auth_cred_response: AuthCredentialResponse = match bincode::deserialize(auth_cred_bytes)
+        {
+            Ok(result) => result,
+            Err(err) => return Err(err.to_string().into()),
+        };
+
+        let redemption_time = 123456; // TODO, same as server side
+
+        // TODO: return informative Err if UUID does not parse
+        let uid = Uuid::parse_str(&self.source_uuid).unwrap();
+
+        // Now verify proof and get AuthCredential
+        let auth_credential = match self
+            .server_public_params
+            .expect("err: no server params available!")
+            .receive_auth_credential(*uid.as_bytes(), redemption_time, &auth_cred_response)
+        {
+            Ok(result) => result,
+            Err(_) => return Err("err: invalid AuthCredentialResponse".into()), // TODO: Use ZkGroupError here
+        };
+
+        self.auth_cred = Some(auth_credential);
+        Ok(true)
+    }
+
+    /// Parses the server parameters and stores them locally in the session.
+    pub fn save_server_params(&mut self, server_params: String) -> Result<bool, JsValue> {
+        let server_params_bytes = &hex::decode(server_params).map_err(|e| e.to_string())?;
+        let server_public_params: zkgroup::api::server_params::ServerPublicParams =
+            match bincode::deserialize(server_params_bytes) {
+                Ok(result) => result,
+                Err(err) => return Err(err.to_string().into()),
+            };
+        self.server_public_params = Some(server_public_params);
+        Ok(true)
+    }
+
+    /// Parses a `SenderCert` from the server, checks its validity, and stores it locally.
     pub fn get_cert_and_validate(
         &mut self,
         raw_sender_cert: String,
@@ -132,6 +246,68 @@ impl SecureDropSourceSession {
             .map_err(|e| e.to_string().into())
     }
 
+    /// Create a new group given a list of members (ourself, the source) and administrators (journalists).
+    ///
+    /// Using `JsValue` here as we cannot use `Vec<String>` -
+    /// see https://github.com/rustwasm/wasm-bindgen/issues/168
+    pub fn create_group(
+        &mut self,
+        uuids_of_members: &JsValue,
+        uuids_of_admins: &JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let uuids_of_members: Vec<UuidEntry> = uuids_of_members.into_serde().unwrap();
+        let uuids_of_admins: Vec<UuidEntry> = uuids_of_admins.into_serde().unwrap();
+
+        let mut csprng = OsRng;
+        let key_randomness: [u8; 32] = csprng.gen();
+        let master_key = zkgroup::groups::GroupMasterKey::new(key_randomness);
+        let group_secret_params =
+            zkgroup::groups::GroupSecretParams::derive_from_master_key(master_key);
+        let group_public_params = group_secret_params.get_public_params();
+        let group_id = group_public_params.get_group_identifier();
+
+        self.group_secret_params = Some(group_secret_params);
+        self.group_public_params = Some(group_public_params);
+        self.group_master_key = Some(master_key);
+
+        let auth_cred = match self.auth_cred {
+            Some(result) => result,
+            None => return Err("err: no AuthCred found".into()), // TODO: Use ZkGroupError here
+        };
+        let cred_randomness: [u8; 32] = csprng.gen();
+        let auth_credential_presentation = self
+            .server_public_params
+            .expect("err: no server params available!")
+            .create_auth_credential_presentation(cred_randomness, group_secret_params, auth_cred);
+
+        let mut admins = Vec::new();
+        for admin in uuids_of_admins.iter() {
+            let user = Uuid::parse_str(&admin.string).expect("err: could not parse administrator");
+            let ciphertext = group_secret_params.encrypt_uuid(*user.as_bytes());
+            admins.push(hex::encode(&bincode::serialize(&ciphertext).unwrap()));
+        }
+
+        let mut members = Vec::new();
+        for member in uuids_of_members.iter() {
+            let user = Uuid::parse_str(&member.string).expect("err: could not parse member");
+            let ciphertext = group_secret_params.encrypt_uuid(*user.as_bytes());
+            members.push(hex::encode(&bincode::serialize(&ciphertext).unwrap()));
+        }
+
+        let group_creation_data = PublicGroupCreationBundle {
+            auth_credential_presentation: hex::encode(
+                &bincode::serialize(&auth_credential_presentation).unwrap(),
+            ),
+            group_id: hex::encode(group_id),
+            group_public_params: hex::encode(&bincode::serialize(&group_public_params).unwrap()),
+            group_members: members,
+            group_admins: admins,
+        };
+        JsValue::from_serde(&group_creation_data).map_err(|e| e.to_string().into())
+    }
+
+    /// Process a prekey bundle for a new recipient we'd like to contact.
+    ///
     /// TODO: Prevent duplicate registration IDs from source and journalist
     /// (matters on journalist side)
     pub fn process_prekey_bundle(
@@ -175,6 +351,7 @@ impl SecureDropSourceSession {
         .map_err(|e| e.to_string().into())
     }
 
+    /// Encrypt a Signal message (not using sealed sender).
     pub fn encrypt(&mut self, address: String, ptext: String) -> Result<String, JsValue> {
         let recipient = ProtocolAddress::new(address, DEVICE_ID);
         block_on(message_encrypt(
@@ -188,7 +365,12 @@ impl SecureDropSourceSession {
         .map_err(|e| e.to_string().into())
     }
 
-    pub fn sealed_sender_encrypt(&mut self, address: String, ptext: String) -> Result<String, JsValue> {
+    /// Encrypt a sealed sender Signal message.
+    pub fn sealed_sender_encrypt(
+        &mut self,
+        address: String,
+        ptext: String,
+    ) -> Result<String, JsValue> {
         let recipient = ProtocolAddress::new(address, DEVICE_ID);
         let mut csprng = OsRng;
         block_on(sealed_sender_encrypt(
@@ -204,6 +386,77 @@ impl SecureDropSourceSession {
         .map_err(|e| e.to_string().into())
     }
 
+    /// Pack up the group key and send it to new group participants.
+    pub fn sealed_send_encrypted_group_key(&mut self, address: String) -> Result<String, JsValue> {
+        let group_key = match self.group_master_key {
+            Some(result) => result,
+            None => return Err("err: no GroupMasterKey found".into()), // TODO: Use ZkGroupError here
+        };
+        let group_params = match self.group_public_params {
+            Some(result) => result,
+            None => return Err("err: no GroupPublicParams found".into()), // TODO: Use ZkGroupError here
+        };
+
+        let recipient = ProtocolAddress::new(address, DEVICE_ID);
+        let mut csprng = OsRng;
+
+        let group_id_str = hex::encode(group_params.get_group_identifier());
+        let group_key_str = hex::encode(bincode::serialize(&group_key).unwrap());
+        let group_obj = SecureDropGroupMessage {
+            mtype: SecureDropV1MessageType::SdGroupManagementStart,
+            group_id: group_id_str,
+            message: group_key_str,
+        };
+        let group_message = serde_json::to_string(&group_obj).unwrap();
+
+        block_on(sealed_sender_encrypt(
+            &recipient,
+            &self.sender_cert.as_ref().expect("no sender cert!"),
+            group_message.as_bytes(), //&bincode::serialize(&group_message).unwrap(),
+            &mut self.store.session_store,
+            &mut self.store.identity_store,
+            None,
+            &mut csprng,
+        ))
+        .map(|data| hex::encode(data))
+        .map_err(|e| e.to_string().into())
+    }
+
+    /// Send group message to group participant using sealed sender.
+    pub fn group_sealed_sender_encrypt(
+        &mut self,
+        address: String,
+        ptext: String,
+    ) -> Result<String, JsValue> {
+        let recipient = ProtocolAddress::new(address, DEVICE_ID);
+        let mut csprng = OsRng;
+
+        let group_params = match self.group_public_params {
+            Some(result) => result,
+            None => return Err("err: no GroupPublicParams found".into()), // TODO: Use ZkGroupError here
+        };
+
+        let group_obj = SecureDropGroupMessage {
+            mtype: SecureDropV1MessageType::SdGroupMessage,
+            group_id: hex::encode(group_params.get_group_identifier()),
+            message: hex::encode(ptext),
+        };
+        let group_message = serde_json::to_string(&group_obj).unwrap();
+
+        block_on(sealed_sender_encrypt(
+            &recipient,
+            &self.sender_cert.as_ref().expect("no sender cert!"),
+            group_message.as_bytes(), //&bincode::serialize(&group_message).unwrap(),
+            &mut self.store.session_store,
+            &mut self.store.identity_store,
+            None,
+            &mut csprng,
+        ))
+        .map(|data| hex::encode(data))
+        .map_err(|e| e.to_string().into())
+    }
+
+    /// Decrypt a Signal message (not using sealed sender).
     pub fn decrypt(&mut self, address: String, ciphertext: String) -> Result<String, JsValue> {
         let sender = ProtocolAddress::new(address, DEVICE_ID);
         let mut csprng = OsRng;
@@ -226,13 +479,15 @@ impl SecureDropSourceSession {
         String::from_utf8(plaintext).map_err(|e| e.to_string().into())
     }
 
-    // TODO: Return sender also
+    /// Decrypt a sealed sender Signal message.
+    ///
+    /// TODO: Consider returning sender also
     pub fn sealed_sender_decrypt(&mut self, ciphertext: String) -> Result<String, JsValue> {
         let raw_ciphertext = hex::decode(ciphertext).map_err(|e| e.to_string())?;
         let plaintext = block_on(sealed_sender_decrypt(
             &raw_ciphertext,
             &self.server_trust_root.as_ref().expect("no trust root!"),
-            101,  // TODO: timestamp
+            101, // TODO: timestamp
             Some(self.source_uuid.clone()),
             Some(self.source_uuid.clone()),
             DEVICE_ID,

@@ -11,7 +11,7 @@ from signal_groups.api.auth import AuthCredential, AuthCredentialResponse
 from signal_groups.api.server_params import ServerPublicParams
 from signal_groups.api.groups import UuidCiphertext, GroupMasterKey, GroupSecretParams
 
-username = os.getenv("SECUREDROP_JOURNALIST_USERNAME", "journalist")
+username = os.getenv("SECUREDROP_JOURNALIST_USERNAME", "dellsberg")
 passphrase = os.getenv("SECUREDROP_JOURNALIST_PASSPHRASE", "this dont matter")
 totp = os.getenv("SECUREDROP_JOURNALIST_TOTP", "123666")
 
@@ -35,7 +35,7 @@ auth_headers = {
 
 print("generating required key material for Signal registration...")
 DEVICE_ID = 1 # Unused but required field in the protocol
-registration_id = 666
+registration_id = 667
 journalist_address = address.ProtocolAddress(journalist_uuid, DEVICE_ID)
 
 # Store this somewhere
@@ -46,7 +46,7 @@ store = storage.InMemSignalProtocolStore(
         identity_key_pair, registration_id
     )
 # Store this somewhere
-signed_pre_key_id = 232
+signed_pre_key_id = 233
 signed_pre_key_pair = curve.KeyPair.generate()
 signed_pre_key_public = signed_pre_key_pair.public_key().serialize()
 signed_pre_key_signature = (
@@ -85,6 +85,7 @@ resp = requests.get('http://127.0.0.1:8081/api/v2/groups',
                      headers=auth_headers)
 print(resp, resp.text)
 group_members = resp.json().get("default")
+time.sleep(PAUSE)
 
 print("getting public parameters..")
 resp = requests.get('http://127.0.0.1:8081/api/v2/server_params',
@@ -114,7 +115,6 @@ auth_credential_resp = AuthCredentialResponse.deserialize(bytes.fromhex(raw_auth
 redemption_time = 123456  # TODO, same as server side  # TODO: this is M4 but not used in the proof?
 uid = UUID(journalist_uuid).bytes
 auth_credential = server_public_params.receive_auth_credential(uid, redemption_time, auth_credential_resp)
-time.sleep(PAUSE)
 
 # Ensure certificate is still valid
 sender_cert.validate(trust_root_pubkey, current_timestamp)
@@ -150,37 +150,6 @@ while True:
     # We get sender from within the envelope instead of from what is stored on the server
     source_uuid = message.sender_uuid()
     source_address = address.ProtocolAddress(source_uuid, DEVICE_ID)
-
-    # TEST: example group creation
-    # print('trying to create a group')
-    # master_key = GroupMasterKey(os.urandom(32))
-    # group_secret_params = GroupSecretParams.derive_from_master_key(master_key)
-    # group_public_params = group_secret_params.get_public_params()
-
-    # auth_credential_presentation = server_public_params.create_auth_credential_presentation(
-    #     os.urandom(32),
-    #     group_secret_params,
-    #     auth_credential
-    # )
-
-    # fellow_journos = []
-    # for journo in group_members:
-    #     uuid_ciphertext = group_secret_params.encrypt_uuid(UUID(journo).bytes)
-    #     fellow_journos.append(uuid_ciphertext.serialize().hex())
-
-    # source_uuid_ciphertext = group_secret_params.encrypt_uuid(UUID(source_uuid).bytes)
-    # resp = requests.post('http://127.0.0.1:8081/api/v2/groups/new',
-    #                  data=json.dumps(
-    #                      {"auth_credential_presentation": auth_credential_presentation.serialize().hex(),
-    #                       "group_id": bytes(group_public_params.get_group_identifier()).hex(),
-    #                       "group_public_params": group_public_params.serialize().hex(),
-    #                       "group_members": [source_uuid_ciphertext.serialize().hex()],
-    #                       "group_admins": fellow_journos,
-    #                       }),
-    #                  headers=auth_headers)
-    # print(resp, resp.text)
-    # time.sleep(PAUSE)
-    # ENDTEST
 
     # TODO: clean up, strip off prefix bytes
     message_content = json.loads(b"{" + message.message().split(b"{")[1])
@@ -232,7 +201,7 @@ while True:
     print(resp, resp.text)
     time.sleep(PAUSE)
 
-    journo_response = b"wellllll howdy doody! please tell me more. It's me... journalist!"
+    journo_response = b"wellllll howdy doody! please tell me more. It's me... journalist2!"
     print(f'now responding to source... sending {journo_response}')
 
     sealed_sender_message = sealed_sender.sealed_sender_encrypt(
