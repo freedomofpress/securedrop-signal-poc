@@ -36,7 +36,7 @@ pub struct RegistrationBundle {
     pub registration_id: u32,
 }
 
-/// Number that dsescribes the message type.
+/// Number that describes the message type.
 #[derive(Serialize, Deserialize)]
 pub enum SecureDropV1MessageType {
     SdGroupManagementStart = 1,
