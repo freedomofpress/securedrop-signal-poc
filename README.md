@@ -11,7 +11,7 @@ To try out and demo e2e encryption, you should:
 
 0. Setup the `securedrop-source` crate as described at the bottom of this readme.
 
-1. Then run this server branch which provide the v2 APIs required: https://github.com/redshiftzero/securedrop/signal-proto
+1. Then run this server branch which provide the v2 APIs required: https://github.com/redshiftzero/securedrop/tree/signal-proto
 
 2. Once the server is running, set the OTP token and password in the top of `journalist.py`. Then start `journalist.py`:
 
