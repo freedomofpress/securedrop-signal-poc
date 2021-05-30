@@ -3,27 +3,34 @@ prototype source + journalist clients for securedrop
 
 ⚠️ **these are prototypes for discussion only and are NOT for production use** ⚠️
 
-## How to demo
+## Run the demo
 
-There are Python clients in `journalist.py` (user `journalist`) and `journalist2.py` (user `dellsberg`) to demo e2ee comms through the server. To modify that Python client, simply install `requirements.txt`.
+There are Python clients in `journalist.py` (user `journalist`) and `journalist2.py` (user `dellsberg`) to demo e2e communications through the server.
+To modify that Python client, simply install `requirements.txt`.
 
-To try out and demo e2e encryption, you should:
+To try out e2e encryption, you should:
 
 0. Setup the `securedrop-source` crate as described at the bottom of this readme.
+1. In the main `securedrop` repo, check out the [`signal-proto`](https://github.com/freedomofpress/securedrop/tree/signal-proto.) branch,
+   which provides the required v2 APIs.
+   (We assume you have a successfully running development environment for SecureDrop.
+   See the docs here for more.)
+1. Run `make dev`.
+1. Once the server is running, set the OTP token and password in the top of `journalist.py`.
+1. Start `journalist.py`:
 
-1. Then run this server branch which provide the v2 APIs required: https://github.com/freedomofpress/securedrop/tree/signal-proto
+   ```
+   python3 journalist.py
+   ```
 
-2. Once the server is running, set the OTP token and password in the top of `journalist.py`. Then start `journalist.py`:
-
-```
-python3 journalist.py
-```
-
-This will first perform signal registration, then wait for messages for sources. In another Terminal, Do the same with `journalist2.py` (this simulates a conversation between one source and multiple journalists).
-
-3. Then visit the source interface and create an account. When you login, it will perform signal registration without interaction from the user.
-
-4. Send a message to a journalist, then wait for responses. When the journalists respond (done in the `journalist*.py` scripts), without interaction from the user, the journalist message should appear decrypted.
+   This will first perform signal registration, then wait for messages for sources.
+1. In another Terminal, do the same with `journalist2.py`.
+   This simulates a conversation between one source and multiple journalists.
+1. Then visit the source interface and create an account.
+   When you login, it will perform signal registration without interaction from the user.
+1. Send a message to a journalist, then wait for responses.
+   When the journalists respond (done in the `journalist*.py` scripts),
+   without interaction from the user, the journalist message should appear decrypted.
 
 Note that the source sessions currently do not persist, i.e. this demo only works on first login (we'd need some logic to store the session data either locally in the browser or encrypted on the server). If you try it on subsequent logins, you'll get an error in the console indicating the session is not found.
 
