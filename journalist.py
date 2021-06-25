@@ -3,6 +3,7 @@ import os
 import requests
 import time
 from uuid import UUID
+import pyotp
 
 PAUSE = 2
 
@@ -13,7 +14,7 @@ from signal_groups.api.groups import UuidCiphertext, GroupMasterKey, GroupSecret
 
 username = os.getenv("SECUREDROP_JOURNALIST_USERNAME", "journalist")
 passphrase = os.getenv("SECUREDROP_JOURNALIST_PASSPHRASE", "this dont matter")
-totp = os.getenv("SECUREDROP_JOURNALIST_TOTP", "123666")
+totp = os.getenv("SECUREDROP_JOURNALIST_TOTP", "AHCOGO7VCER3EJ4L")
 
 # Root endpoint
 resp = requests.get('http://127.0.0.1:8081/api/v2/')
@@ -22,7 +23,7 @@ time.sleep(PAUSE)
 
 # Login
 resp = requests.post('http://127.0.0.1:8081/api/v2/token',
-                     data=json.dumps({"username": username, "passphrase": passphrase, "one_time_code": totp}))
+                     data=json.dumps({"username": username, "passphrase": passphrase, "one_time_code": pyotp.TOTP(totp).now()}))
 token = resp.json()['token']
 journalist_uuid = resp.json()['journalist_uuid']
 print("we've logged in and gotten our API token!")

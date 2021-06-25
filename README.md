@@ -17,7 +17,7 @@ To try out e2e encryption, complete the following steps:
    (We assume you have previously run development environment for SecureDrop.
    See the [SecureDrop developer documentation ](https://docs.securedrop.org/en/stable/development/setup_development.html) for more.)
 1. Run `make dev` to start the SecureDrop developement server.
-1. Once the server is running, set the `SECUREDROP_JOURNALIST_PASSPHRASE` and `SECUREDROP_JOURNALIST_TOTP` environment variables (see https://github.com/freedomofpress/securedrop-e2e/blob/main/journalist.py#L14-L16).
+1. Once the server is running, set the `SECUREDROP_JOURNALIST_PASSPHRASE` and `SECUREDROP_JOURNALIST_TOTP` environment variables to the passphrase and totp secret values used in the dev environment (see https://github.com/freedomofpress/securedrop-e2e/blob/main/journalist.py#L14-L16).
 1. Start `journalist.py`:
 
    ```
