@@ -47,7 +47,7 @@ pub enum SecureDropV1MessageType {
 /// the group.
 #[derive(Serialize, Deserialize)]
 pub struct SecureDropGroupMessage {
-    pub mtype: SecureDropV1MessageType,
+    pub mtype: u32,
     pub group_id: String,
     pub message: String,
 }
@@ -403,7 +403,7 @@ impl SecureDropSourceSession {
         let group_id_str = hex::encode(group_params.get_group_identifier());
         let group_key_str = hex::encode(bincode::serialize(&group_key).unwrap());
         let group_obj = SecureDropGroupMessage {
-            mtype: SecureDropV1MessageType::SdGroupManagementStart,
+            mtype: SecureDropV1MessageType::SdGroupManagementStart as u32,
             group_id: group_id_str,
             message: group_key_str,
         };
@@ -437,7 +437,7 @@ impl SecureDropSourceSession {
         };
 
         let group_obj = SecureDropGroupMessage {
-            mtype: SecureDropV1MessageType::SdGroupMessage,
+            mtype: SecureDropV1MessageType::SdGroupMessage as u32,
             group_id: hex::encode(group_params.get_group_identifier()),
             message: hex::encode(ptext),
         };
@@ -506,4 +506,19 @@ impl SecureDropSourceSession {
 #[wasm_bindgen(start)]
 pub fn main() -> Result<(), JsValue> {
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_message_format() {
+        let group_obj = SecureDropGroupMessage {
+            mtype: SecureDropV1MessageType::SdGroupManagementStart as u32,
+            group_id: "teehee".to_string(),
+            message: "teehee".to_string(),
+        };
+        assert_eq!(group_obj.mtype, 1);
+    }
 }
