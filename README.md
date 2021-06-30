@@ -12,7 +12,7 @@ To modify that Python client, simply install `requirements.txt`.
 To try out e2e encryption, complete the following steps:
 
 0. Setup the `securedrop-source` crate as [described below](#securedrop-source-crate).
-1. In the main `securedrop` repo, check out the [`signal-proto`](https://github.com/freedomofpress/securedrop/tree/signal-proto) branch,
+1. In the main `securedrop` repo, check out the [`signal-proto-focal`](https://github.com/freedomofpress/securedrop/tree/signal-proto-focal) branch,
    which provides the required v2 APIs.
    (We assume you have previously run development environment for SecureDrop.
    See the [SecureDrop developer documentation ](https://docs.securedrop.org/en/stable/development/setup_development.html) for more.)
