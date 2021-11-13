@@ -5,7 +5,6 @@ use std::panic;
 use rand::rngs::OsRng;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use serde_json;
 use std::convert::TryFrom;
 // use std::time::{SystemTime, UNIX_EPOCH};
 use futures::executor::block_on;
@@ -375,14 +374,14 @@ impl SecureDropSourceSession {
         let mut csprng = OsRng;
         block_on(sealed_sender_encrypt(
             &recipient,
-            &self.sender_cert.as_ref().expect("no sender cert!"),
+            self.sender_cert.as_ref().expect("no sender cert!"),
             &ptext.into_bytes(),
             &mut self.store.session_store,
             &mut self.store.identity_store,
             None,
             &mut csprng,
         ))
-        .map(|data| hex::encode(data))
+        .map(hex::encode)
         .map_err(|e| e.to_string().into())
     }
 
@@ -411,14 +410,14 @@ impl SecureDropSourceSession {
 
         block_on(sealed_sender_encrypt(
             &recipient,
-            &self.sender_cert.as_ref().expect("no sender cert!"),
+            self.sender_cert.as_ref().expect("no sender cert!"),
             group_message.as_bytes(), //&bincode::serialize(&group_message).unwrap(),
             &mut self.store.session_store,
             &mut self.store.identity_store,
             None,
             &mut csprng,
         ))
-        .map(|data| hex::encode(data))
+        .map(hex::encode)
         .map_err(|e| e.to_string().into())
     }
 
@@ -445,14 +444,14 @@ impl SecureDropSourceSession {
 
         block_on(sealed_sender_encrypt(
             &recipient,
-            &self.sender_cert.as_ref().expect("no sender cert!"),
+            self.sender_cert.as_ref().expect("no sender cert!"),
             group_message.as_bytes(), //&bincode::serialize(&group_message).unwrap(),
             &mut self.store.session_store,
             &mut self.store.identity_store,
             None,
             &mut csprng,
         ))
-        .map(|data| hex::encode(data))
+        .map(hex::encode)
         .map_err(|e| e.to_string().into())
     }
 
@@ -486,7 +485,7 @@ impl SecureDropSourceSession {
         let raw_ciphertext = hex::decode(ciphertext).map_err(|e| e.to_string())?;
         let plaintext = block_on(sealed_sender_decrypt(
             &raw_ciphertext,
-            &self.server_trust_root.as_ref().expect("no trust root!"),
+            self.server_trust_root.as_ref().expect("no trust root!"),
             101, // TODO: timestamp
             Some(self.source_uuid.clone()),
             Some(self.source_uuid.clone()),
