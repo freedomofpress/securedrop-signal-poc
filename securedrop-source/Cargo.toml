@@ -10,7 +10,7 @@ crate-type = ["cdylib"]
 [dependencies]
 bincode = "1.2.1"
 libsignal-protocol-rust = { git = "https://github.com/freedomofpress/libsignal-client", rev="609a1de73380a2b9d314db625e6b2f0368e838ec" }
-zkgroup = { git = "https://github.com/redshiftzero/zkgroup", rev="ea80ccc47bc8363d15906fb0f57588e940b589a0" }
+zkgroup = { git = "https://github.com/signalapp/zkgroup", rev="ff26ac3679329e182772eed3f51797d91f963c3b" }
 rand = "0.7.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.64"
