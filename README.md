@@ -71,29 +71,25 @@ cargo doc --open
 ### Development
 
 You will need a Rust toolchain installed on your system to work on the `securedrop-source` crate.
-
 To compile to Wasm and generate glue JS for the source interface,
 build the `securedrop-source` directory with [`wasm-pack`](https://github.com/rustwasm/wasm-pack):
 
 ```
-wasm-pack build --target web
+make build
 ```
 
-This produces a `pkg` directory with the compiled Wasm and JS (along with other files that are not strictly required).
-The two files you want are:
+That command will:
+
+  1. Lint and run tests
+  2. Compile to Wasm and generate glue JS for the Source Interface
+  3. Copy the JS files to SecureDrop repo at `../securedrop/`
+
+The `pkg` directory within the securedrop-source crate contains the Wasm and JS,
+along with other files that are not strictly required. The two files you want are:
 
 ```
-./pkg/securedrop_source.js
-./pkg/securedrop_source_bg.wasm
-```
-
-You will need to copy the JS and Wasm files over to the server dev container.
-The easiest way to do this is to set `$SECUREDROP_SERVER` to the root of the git tree containing your SecureDrop checkout.
-Then:
-
-```
-cp pkg/securedrop_source.js $SECUREDROP_SERVER/securedrop/static/js/
-cp pkg/securedrop_source_bg.wasm $SECUREDROP_SERVER/securedrop/static/js/
+./securedrop-source/pkg/securedrop_source.js
+./securedrop-source/pkg/securedrop_source_bg.wasm
 ```
 
 You can now set up event handlers and other logic as you see fit using JS on the source interface.

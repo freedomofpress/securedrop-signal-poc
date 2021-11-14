@@ -15,9 +15,9 @@ deploy-dev:
 
 .PHONY: lint
 lint:
-	cargo fmt --manifest-path securedrop-source/Cargo.toml -- --check
-	cargo clippy --manifest-path securedrop-source/Cargo.toml
+	cargo fmt -- --check
+	cargo clippy -- -D warnings
 
 .PHONY: test
 test:
-	cargo test --manifest-path securedrop-source/Cargo.toml
+	cargo test
