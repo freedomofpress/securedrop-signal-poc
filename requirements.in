@@ -1,5 +1,5 @@
 signal-protocol==0.2.2
-signal-groups==0.1.0
+https://github.com/cfm/signal-groups/archive/f6a6c1f1a50796040f0f1ec295d060b5528a7ed6.zip#egg=signal-groups
 requests>=2.25.1
 pyotp==2.2.6
 
