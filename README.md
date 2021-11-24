@@ -7,7 +7,16 @@ _prototype source + journalist clients for SecureDrop_
 ## Run the demo
 
 There are Python clients in `journalist.py` (user `journalist`) and `journalist2.py` (user `dellsberg`) to demo e2e communications through the server.
-To modify that Python client, simply install `requirements.txt`.
+
+To run or modify these Python clients, simply run:
+
+```sh-session
+$ make venv
+[...]
+#################
+Make sure to run: source .venv/bin/activate
+$ source .venv/bin/activate
+```
 
 To try out e2e encryption, complete the following steps:
 
