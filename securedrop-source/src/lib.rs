@@ -25,7 +25,7 @@ const DEVICE_ID: u32 = 1;
 /// `RegistrationBundle` contains the required data for initial
 /// Signal registration with the server, except one-time prekeys, which are
 /// a TODO.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
 pub struct RegistrationBundle {
     pub signed_prekey_id: u32,
     pub signed_prekey: String,
@@ -36,7 +36,7 @@ pub struct RegistrationBundle {
 }
 
 /// Number that describes the message type.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
 pub enum SecureDropV1MessageType {
     SdGroupManagementStart = 1,
     SdGroupMessage = 11,
@@ -44,7 +44,7 @@ pub enum SecureDropV1MessageType {
 
 /// `SecureDropGroupMessage` represents an individual message or state change in
 /// the group.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
 pub struct SecureDropGroupMessage {
     pub mtype: u32,
     pub group_id: String,
