@@ -9,9 +9,10 @@ build:
 .PHONY: deploy-dev
 deploy-dev:
 	@test -d ../securedrop/ || { echo "ERROR: Missing securedrop repo at ../securedrop/" && exit 1 ; }
-	@cp -v -t ../securedrop/securedrop/static/js/ \
+	@cp -v \
 		securedrop-source/pkg/securedrop_source.js \
-		securedrop-source/pkg/securedrop_source_bg.wasm
+		securedrop-source/pkg/securedrop_source_bg.wasm \
+		../securedrop/securedrop/static/js/
 
 .PHONY: lint
 lint:
