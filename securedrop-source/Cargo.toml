@@ -2,7 +2,8 @@
 name = "securedrop-source"
 version = "0.1.0"
 authors = ["redshiftzero <jen@freedom.press>"]
-edition = "2018"
+edition = "2021"
+rust-version = "1.56.1"
 
 [lib]
 crate-type = ["cdylib"]
