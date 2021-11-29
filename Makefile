@@ -22,3 +22,11 @@ lint:
 .PHONY: test
 test:
 	cargo test
+
+.PHONY: venv
+venv:
+	python3 -m venv .venv
+	.venv/bin/pip install --upgrade pip
+	.venv/bin/pip install -r requirements.txt
+	@echo "#################"
+	@echo "Make sure to run: source .venv/bin/activate"
